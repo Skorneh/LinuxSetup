@@ -1,23 +1,69 @@
 # LinuxSetup
 
-My Arch Linux setup: a minimal Arch install plus a lean, Windows-style KDE
-Plasma desktop, with gaming (Steam, Lutris, World of Warcraft) on the real PC.
+My Arch Linux setup, built from nothing: a minimal Arch install, the labwc
+window manager (windows float like on Windows, no tiling), and only the pieces
+I picked. Gaming (Steam, Lutris, World of Warcraft) on the real PC.
+
+There's no settings app. Everything is a text file in this repo or a small
+script I own.
 
 ## What's in here
 
 | Path | What it does |
 |---|---|
-| `install.sh` | Base setup: installs packages, paru, links dotfiles, sets up the login screen, debloats Firefox, enables services. Adds the guest agent when it's running in a Proxmox VM. |
-| `kde-setup.sh` | Windows-style KDE settings: shortcuts, screenshot keys, window snapping, Start menu search. Run inside Plasma. |
+| `install.sh` | Installs everything, links the configs, applies the colors, sets up booting straight to the lock screen, debloats Firefox. Adds the guest agent in a Proxmox VM. |
 | `gaming.sh` | Real PC only: enables `[multilib]`, detects your GPU and installs drivers, then Steam, Lutris, GameMode, MangoHud. |
-| `packages/pkglist.txt` | Official-repo packages for the desktop. |
-| `packages/aurlist.txt` | AUR packages (empty for now). |
-| `packages/gaming.txt` | Gaming packages. |
-| `system/firefox-policies.json` | Firefox debloat settings, installed to `/etc/firefox/policies/`. |
+| `packages/` | Package lists: `pkglist.txt` (official repos), `aurlist.txt` (AUR), `gaming.txt`. |
 | `dotfiles/` | Config files, linked into `~` with GNU Stow. Each folder mirrors your home folder. |
+| `dotfiles/rice/.config/rice/colors` | **The one file with all the colors.** |
+| `theme/templates/` | Configs that use those colors. `rice-theme` fills them in. |
+| `dotfiles/bin/.local/bin/` | Our own small tools (below). |
+| `system/firefox-policies.json` | Firefox debloat settings. |
 | `scripts/check-packages.sh` | Lists installed packages that aren't in the lists yet. |
 
 All scripts are safe to run more than once.
+
+## The desktop
+
+| Piece | What it is | Config |
+|---|---|---|
+| Window manager | labwc | `dotfiles/labwc/.config/labwc/` (`rc.xml` = settings and shortcuts, `autostart` = what starts with it) |
+| Taskbar | Waybar, bottom | `dotfiles/waybar/…/config.jsonc` |
+| Launcher | rofi | `dotfiles/rofi/…/config.rasi` |
+| Terminal | kitty, Maple Mono NF | `dotfiles/kitty/…/kitty.conf` |
+| Files | Nemo | |
+| Notifications | dunst | `theme/templates/dunst/dunstrc` |
+| Lock screen | hyprlock: black, clock, password box | `theme/templates/hypr/hyprlock.conf` |
+| Login | greetd boots straight to the lock screen | `install.sh` step 6 |
+| Background | solid color from the colors file | `dotfiles/labwc/…/autostart` |
+| Idle | lock after 10 min, monitor off after 15 | `dotfiles/labwc/…/autostart` |
+
+### Our own tools
+
+Each one is a short script in `dotfiles/bin/.local/bin/` that uses rofi as its
+window, so it matches the colors automatically.
+
+| Tool | Opens with | Does |
+|---|---|---|
+| `force-quit` | Ctrl+Shift+Esc | Lists open apps with memory use. Pick one, confirm, it's closed. |
+| `power-menu` | Ctrl+Alt+Delete, power icon on the taskbar | Lock, Log out, Restart, Shut down. |
+| `sound-output` | Click the volume on the taskbar | Pick speakers, headset, etc. |
+| `network-menu` | Click the network icon on the taskbar | Shows your connection, joins Wi-Fi, opens `nmtui` for anything else. |
+| `screenshot` | Print Screen keys | Region or full screen to the clipboard, or save to a file. |
+| `rice-theme` | Run it in a terminal | Applies the colors file everywhere. |
+
+## Colors
+
+All colors are in `~/.config/rice/colors` (Graphite: black and grays). Change
+a value, then run:
+
+```bash
+rice-theme
+```
+
+It rewrites the taskbar, launcher, notifications, terminal, window borders and
+lock screen, and reloads what's running. App windows like Nemo use the dark
+`adw-gtk3-dark` theme.
 
 ## Setting up a machine
 
@@ -32,7 +78,7 @@ Boot the Arch ISO and run `archinstall`. Choose:
 
 Reboot into the new system and log in on the text console.
 
-### 2. Run the base setup
+### 2. Run the setup
 
 ```bash
 sudo pacman -S --needed git
@@ -42,20 +88,11 @@ cd ~/LinuxSetup
 sudo reboot
 ```
 
-The repo needs to live at `~/LinuxSetup`, because your dotfiles are symlinks
-into it.
+The repo needs to live at `~/LinuxSetup`, because your configs are symlinks
+into it. After the reboot, the PC starts at your lock screen. Type your
+password and you're on the desktop.
 
-### 3. Apply the Windows-style settings
-
-Log in to **Plasma (Wayland)**, open Konsole, and run:
-
-```bash
-~/LinuxSetup/kde-setup.sh
-```
-
-Then log out and back in.
-
-### 4. Gaming (real PC only)
+### 3. Gaming (real PC only)
 
 ```bash
 ~/LinuxSetup/gaming.sh
@@ -70,51 +107,45 @@ installing them. After rebooting:
 
 ## Shortcuts
 
-| Keys | Action | Source |
-|---|---|---|
-| Win | Start menu | Plasma default |
-| Win+E | File manager (Dolphin) | kde-setup.sh |
-| Win+R | Run / search (KRunner) | kde-setup.sh |
-| Win+I | Settings | kde-setup.sh |
-| Win+L | Lock screen | kde-setup.sh |
-| Win+D | Show desktop | Plasma default |
-| Win+Left / Win+Right | Snap to half the screen | Plasma default |
-| Win+Up / Win+Down | Maximize / minimize | kde-setup.sh |
-| Win+Tab (or Win+W) | Overview of all windows, like Task View | kde-setup.sh |
-| Print Screen | Screenshot a region, to clipboard | kde-setup.sh |
-| Win+Shift+S | Screenshot a region, to clipboard | kde-setup.sh |
-| Alt+Print Screen | Screenshot the current window, to clipboard | kde-setup.sh |
-| Shift+Print Screen | Screenshot the whole screen, to clipboard | kde-setup.sh |
-| Win+Print Screen | Screenshot the whole screen, saved to Pictures/Screenshots | kde-setup.sh |
-| Ctrl+Shift+Esc | System Monitor (Task Manager) | kde-setup.sh |
-| Ctrl+Alt+T | Terminal | kde-setup.sh |
-| Alt+Tab | Switch windows (every window shown separately, with previews) | kde-setup.sh |
+| Keys | Action |
+|---|---|
+| Win | App launcher |
+| Win+R | Run a command |
+| Win+E | Files (Nemo) |
+| Ctrl+Alt+T | Terminal |
+| Win+L | Lock |
+| Win+V | Clipboard history (text and images) |
+| Win+D | Show desktop |
+| Win+Left / Win+Right | Snap to half the screen |
+| Win+Up / Win+Down | Maximize / minimize |
+| Win+Shift+Left / Right | Move window to the other monitor |
+| Alt+Tab | Switch windows, with previews |
+| Alt+F4 | Close window |
+| Ctrl+Alt+Q | Force-quit the window you're in |
+| Ctrl+Shift+Esc | Force Quit list |
+| Ctrl+Alt+Delete | Power menu |
+| Print Screen, Win+Shift+S, Alt+Print Screen | Drag a box, copy to clipboard |
+| Shift+Print Screen | Whole screen, copy to clipboard |
+| Win+Print Screen | Whole screen, saved to Pictures/Screenshots |
+| Win+Shift+R | Reload labwc after editing `rc.xml` |
 
-Dragging a window to a screen edge or corner snaps it, like Windows.
+Dragging a window to a screen edge snaps it to half the screen, a corner to a
+quarter, the top to maximize. Right-click the desktop for a small menu.
 
-To pin an app to the taskbar, right-click it in the Start menu (or on the
-taskbar while it's open) and choose **Pin to Task Manager**.
-
-The Start menu and Win+R only search apps, settings and the calculator, and
-run typed commands. Web search, browser history and file search are off.
+Alt+Print Screen can't grab just the current window on labwc, so it works like
+Print Screen (drag a box around it).
 
 ## Day-to-day
 
-- **Edit a config:** edit it in place (for example `~/.bashrc`). It's a symlink
-  into the repo, so just commit the change.
+- **Edit a config:** edit it in place (for example `~/.config/labwc/rc.xml`).
+  It's a symlink into the repo, so just commit the change.
+- **Edit a themed config** (anything in `theme/templates/`): edit the template
+  in the repo, then run `rice-theme`. The file in `~/.config` gets overwritten.
 - **Add a new config file to the repo:** move it into the matching place under
-  `dotfiles/<name>/` (for example `dotfiles/kitty/.config/kitty/kitty.conf`),
-  then run `./install.sh` again to link it.
-- **Installed something new?** Run `pkgcheck` (or `scripts/check-packages.sh`)
-  to see what isn't tracked, and add what you want to keep to the right list.
+  `dotfiles/<name>/`, then run `./install.sh` again to link it.
+- **Installed something new?** Run `pkgcheck` to see what isn't tracked, and
+  add what you want to keep to the right list.
 - **Update the system:** `update` (runs `paru -Syu`).
-
-### Why KDE settings aren't symlinked
-
-KDE rewrites its own config files when you change settings, which replaces
-symlinks with normal files. So instead of tracking KDE's config files directly,
-`kde-setup.sh` writes the specific settings that matter with `kwriteconfig6`.
-To keep a new KDE setting, add a line for it there.
 
 ## Testing in a VM (Proxmox)
 
@@ -129,8 +160,9 @@ In `archinstall`, add `qemu-guest-agent` under **Additional packages**.
 Otherwise Proxmox's Shutdown button hangs waiting for the agent. Keep the VM
 out of HA and replication; it's temporary.
 
-Run steps 1–3 only, and take a snapshot right after `archinstall` so you can
-roll back. When you're done, Shutdown → More → Remove to free its resources. `gaming.sh` warns you if it detects a VM.
+Run steps 1–2 only, and take a snapshot right after `archinstall` so you can
+roll back. When you're done, Shutdown → More → Remove to free its resources.
+`gaming.sh` warns you if it detects a VM.
 
 ## Keep secrets out
 

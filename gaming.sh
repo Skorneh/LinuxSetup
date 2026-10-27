@@ -72,5 +72,4 @@ After rebooting:
   - Steam: open it, then Settings > Compatibility > "Enable Steam Play for all other titles".
   - WoW:   open Lutris, search "Battle.net", install it, log in, install WoW.
   - Optional: in Lutris, set Battle.net's launch options to use GameMode and MangoHud.
-  - To pin an app to the taskbar: right-click it in the Start menu > Pin to Task Manager.
 EOF

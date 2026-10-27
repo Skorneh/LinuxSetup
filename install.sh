@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Base setup: KDE Plasma desktop, apps, audio, configs and services.
+# Base setup: labwc desktop, apps, audio, configs and services.
 # Safe to run again; it only installs what's missing.
 # Gaming and GPU drivers live in gaming.sh (real PC only).
 set -euo pipefail
@@ -47,19 +47,33 @@ for pkg_dir in "$REPO_DIR"/dotfiles/*/; do
     stow --dir="$REPO_DIR/dotfiles" --target="$HOME" --no-folding --restow "$pkg"
 done
 
-# --- 5. Login screen theme ---
-info "Setting the SDDM login screen to Breeze..."
-sudo mkdir -p /etc/sddm.conf.d
-printf '[Theme]\nCurrent=breeze\n' | sudo tee /etc/sddm.conf.d/10-theme.conf >/dev/null
+# --- 5. Colors ---
+info "Applying colors..."
+"$HOME/.local/bin/rice-theme"
 
-# --- 6. Firefox debloat ---
+# --- 6. Boot straight to the lock screen ---
+# greetd logs you in once at boot and starts labwc with LOCK_ON_START set, so
+# the first thing you see is hyprlock. After logging out you get a plain text
+# login (agreety) instead.
+info "Setting up login..."
+sudo tee /etc/greetd/config.toml >/dev/null <<EOF
+[terminal]
+vt = 1
+
+[initial_session]
+command = "env LOCK_ON_START=1 labwc"
+user = "$USER"
+
+[default_session]
+command = "agreety --cmd labwc"
+user = "greeter"
+EOF
+
+# --- 7. Firefox debloat ---
 # Turns off Pocket, sponsored content, telemetry, studies and the AI sidebar.
 # Every setting stays changeable in Firefox. Check it at about:policies.
 info "Installing the Firefox policy file..."
 sudo install -Dm644 "$REPO_DIR/system/firefox-policies.json" /etc/firefox/policies/policies.json
-
-# --- 7. Helper commands ---
-sudo install -Dm755 "$REPO_DIR/system/screenshot-full" /usr/local/bin/screenshot-full
 
 # --- 8. Proxmox/QEMU guest agent (VMs only) ---
 # Lets Proxmox shut the VM down cleanly and show its IP address.
@@ -72,7 +86,7 @@ fi
 
 # --- 9. Services ---
 info "Enabling services..."
-sudo systemctl enable NetworkManager.service sddm.service
+sudo systemctl enable NetworkManager.service greetd.service
 systemctl --user enable pipewire.socket pipewire-pulse.socket wireplumber.service 2>/dev/null \
     || warn "Couldn't enable PipeWire user services now; they normally start on their own at login."
 
@@ -81,7 +95,6 @@ info "Base setup done."
 cat <<EOF
 Next steps:
   1. Reboot:  sudo reboot
-  2. Log in to "Plasma (Wayland)" on the login screen.
-  3. Open Konsole and run:  $REPO_DIR/kde-setup.sh
-  4. On the real PC only:   $REPO_DIR/gaming.sh
+  2. The PC starts at your lock screen. Type your password.
+  3. On the real PC only:   $REPO_DIR/gaming.sh
 EOF

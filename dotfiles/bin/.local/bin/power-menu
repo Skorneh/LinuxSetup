@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Ctrl+Alt+Delete or the power icon on the taskbar.
+choice="$(printf 'Lock\nLog out\nRestart\nShut down\n' | rofi -dmenu -i -p "Power")" || exit 0
+case "$choice" in
+    "Lock")      hyprlock ;;
+    "Log out")   labwc --exit ;;
+    "Restart")   systemctl reboot ;;
+    "Shut down") systemctl poweroff ;;
+esac

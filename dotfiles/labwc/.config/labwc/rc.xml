@@ -1,0 +1,133 @@
+<?xml version="1.0"?>
+<!--
+  labwc settings. Windows float like on Windows; drag one to a screen edge
+  or corner to snap it. Colors live in themerc-override, made by rice-theme.
+  All options: man 5 labwc-config. All actions: man 5 labwc-actions.
+  Save this file, then press Win+Shift+R (or run `labwc -r`) to reload.
+-->
+<labwc_config>
+
+  <theme>
+    <cornerRadius>6</cornerRadius>
+    <icon>Papirus-Dark</icon>
+    <font name="Maple Mono NF" size="10" />
+  </theme>
+
+  <!-- Click to focus, like Windows. -->
+  <focus>
+    <followMouse>no</followMouse>
+    <raiseOnFocus>no</raiseOnFocus>
+  </focus>
+
+  <!-- Drag to an edge: half screen. Corner: quarter. Top: maximize. -->
+  <snapping>
+    <range inner="10" outer="10" />
+    <cornerRange>50</cornerRange>
+    <topMaximize>yes</topMaximize>
+  </snapping>
+
+  <!-- Alt+Tab: every window separately, with a preview. -->
+  <windowSwitcher preview="yes" outlines="yes">
+    <osd show="yes" style="thumbnail" />
+  </windowSwitcher>
+
+  <keyboard>
+    <numlock>on</numlock>
+
+    <!-- Windows key alone: app launcher. -->
+    <keybind key="Super_L" onRelease="yes">
+      <action name="Execute" command="rofi -show drun" />
+    </keybind>
+    <keybind key="W-r">
+      <action name="Execute" command="rofi -show run" />
+    </keybind>
+    <keybind key="W-e">
+      <action name="Execute" command="nemo" />
+    </keybind>
+    <keybind key="C-A-t">
+      <action name="Execute" command="kitty" />
+    </keybind>
+    <keybind key="W-l">
+      <action name="Execute" command="hyprlock" />
+    </keybind>
+    <keybind key="W-v">
+      <action name="Execute" command="sh -c 'cliphist list | rofi -dmenu -p Clipboard | cliphist decode | wl-copy'" />
+    </keybind>
+
+    <!-- Our own small tools in ~/.local/bin. -->
+    <keybind key="C-S-Escape">
+      <action name="Execute" command="~/.local/bin/force-quit" />
+    </keybind>
+    <keybind key="C-A-Delete">
+      <action name="Execute" command="~/.local/bin/power-menu" />
+    </keybind>
+
+    <!-- Screenshots, straight to the clipboard. Win+Print saves a file. -->
+    <keybind key="Print">
+      <action name="Execute" command="~/.local/bin/screenshot region" />
+    </keybind>
+    <keybind key="W-S-s">
+      <action name="Execute" command="~/.local/bin/screenshot region" />
+    </keybind>
+    <keybind key="A-Print">
+      <action name="Execute" command="~/.local/bin/screenshot region" />
+    </keybind>
+    <keybind key="S-Print">
+      <action name="Execute" command="~/.local/bin/screenshot full" />
+    </keybind>
+    <keybind key="W-Print">
+      <action name="Execute" command="~/.local/bin/screenshot save" />
+    </keybind>
+
+    <!-- Windows. -->
+    <keybind key="A-Tab">
+      <action name="NextWindow" />
+    </keybind>
+    <keybind key="A-S-Tab">
+      <action name="PreviousWindow" />
+    </keybind>
+    <keybind key="A-F4">
+      <action name="Close" />
+    </keybind>
+    <!-- Force-quit the window you're in, for when it's frozen. -->
+    <keybind key="C-A-q">
+      <action name="Kill" />
+    </keybind>
+    <keybind key="W-Up">
+      <action name="Maximize" />
+    </keybind>
+    <keybind key="W-Down">
+      <action name="Iconify" />
+    </keybind>
+    <keybind key="W-Left">
+      <action name="SnapToEdge" direction="left" combine="yes" />
+    </keybind>
+    <keybind key="W-Right">
+      <action name="SnapToEdge" direction="right" combine="yes" />
+    </keybind>
+    <keybind key="W-S-Left">
+      <action name="MoveToOutput" direction="left" />
+    </keybind>
+    <keybind key="W-S-Right">
+      <action name="MoveToOutput" direction="right" />
+    </keybind>
+    <keybind key="W-d">
+      <action name="ToggleShowDesktop" />
+    </keybind>
+    <keybind key="W-S-r">
+      <action name="Reconfigure" />
+    </keybind>
+
+    <!-- Volume keys. -->
+    <keybind key="XF86AudioRaiseVolume">
+      <action name="Execute" command="wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+" />
+    </keybind>
+    <keybind key="XF86AudioLowerVolume">
+      <action name="Execute" command="wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-" />
+    </keybind>
+    <keybind key="XF86AudioMute">
+      <action name="Execute" command="wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle" />
+    </keybind>
+  </keyboard>
+
+</labwc_config>

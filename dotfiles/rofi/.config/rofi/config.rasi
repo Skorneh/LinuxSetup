@@ -1,0 +1,9 @@
+configuration {
+    show-icons: true;
+    icon-theme: "Papirus-Dark";
+    drun-display-format: "{name}";
+    display-drun: "Apps";
+    display-run: "Run";
+}
+/* Colors come from rice-theme. */
+@theme "~/.config/rofi/theme.rasi"

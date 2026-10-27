@@ -1,0 +1,10 @@
+# Your colors: Graphite. Hex values without the leading #.
+# Change any value, then run `rice-theme` to apply it everywhere.
+
+BG=0b0b0c        # background: desktop, taskbar, lock screen, terminal
+SURFACE=1c1c1f   # raised things: active title bar, search box, menus
+BORDER=2c2c31    # inactive window borders, dividers
+MUTED=8e8e96     # secondary text
+TEXT=d4d4d8      # main text
+ACCENT=a1a1aa    # focused window border, selection, active taskbar app
+URGENT=d97070    # errors and critical notifications only

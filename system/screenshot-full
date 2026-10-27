@@ -1,6 +1,0 @@
-#!/bin/sh
-# Win+Print Screen: save a full-screen screenshot to ~/Pictures/Screenshots,
-# like Windows does. Installed to /usr/local/bin by install.sh.
-dir="$HOME/Pictures/Screenshots"
-mkdir -p "$dir"
-exec spectacle --background --fullscreen --output "$dir/Screenshot_$(date +%Y-%m-%d_%H-%M-%S).png"

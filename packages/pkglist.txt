@@ -1,4 +1,4 @@
-# Base desktop packages (official repos). One package per line.
+# Base packages (official repos). One package per line.
 # Lines starting with # and blank lines are ignored.
 
 # --- Build tools / repo tooling ---
@@ -8,26 +8,41 @@ stow
 man-db
 unzip
 pciutils
+jq
+gettext
 
-# --- KDE Plasma (core pieces only) ---
-plasma-desktop
-sddm
-sddm-kcm
-kscreen
-plasma-nm
-plasma-pa
-powerdevil
-xdg-desktop-portal-kde
-polkit-kde-agent
-kde-gtk-config
-breeze-gtk
-plasma-systemmonitor
+# --- Login ---
+greetd
+
+# --- Window manager and the pieces around it ---
+labwc
+waybar
+rofi
+kitty
+dunst
+libnotify
+swaybg
+hyprlock
+swayidle
+polkit-gnome
+xdg-desktop-portal-wlr
+xdg-desktop-portal-gtk
+
+# --- Clipboard and screenshots ---
+wl-clipboard
+cliphist
+grim
+slurp
+
+# --- Look ---
+adw-gtk-theme
+papirus-icon-theme
+adwaita-cursors
+dconf
 
 # --- Apps ---
-dolphin
-konsole
-spectacle
-ark
+nemo
+gvfs
 firefox
 discord
 
@@ -36,6 +51,7 @@ pipewire
 pipewire-pulse
 pipewire-alsa
 wireplumber
+libpulse
 
 # --- Network ---
 networkmanager

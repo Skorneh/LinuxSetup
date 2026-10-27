@@ -1,0 +1,25 @@
+# Runs when labwc starts. Each line starts one background piece.
+
+# The PC boots straight to the lock screen: greetd logs you in and sets
+# LOCK_ON_START, so your password is asked here instead of at a login screen.
+[ -n "$LOCK_ON_START" ] && hyprlock &
+
+swaybg -c "#$(. ~/.config/rice/colors; echo "$BG")" >/dev/null 2>&1 &
+waybar >/dev/null 2>&1 &
+dunst >/dev/null 2>&1 &
+/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 >/dev/null 2>&1 &
+wl-paste --type text --watch cliphist store >/dev/null 2>&1 &
+wl-paste --type image --watch cliphist store >/dev/null 2>&1 &
+
+# Lock after 10 minutes idle, monitor off after 15. Videos and games that
+# ask the screen to stay on are respected.
+swayidle -w \
+    timeout 600 'pidof hyprlock || hyprlock &' \
+    timeout 900 'wlopm --off \*' resume 'wlopm --on \*' \
+    >/dev/null 2>&1 &
+
+# Dark mode for GTK apps (Nemo, Firefox dialogs).
+gsettings set org.gnome.desktop.interface color-scheme prefer-dark
+gsettings set org.gnome.desktop.interface gtk-theme adw-gtk3-dark
+gsettings set org.gnome.desktop.interface icon-theme Papirus-Dark
+gsettings set org.gnome.desktop.interface cursor-theme Adwaita

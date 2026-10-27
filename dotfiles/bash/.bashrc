@@ -4,6 +4,9 @@
 # Only run for interactive shells.
 [[ $- != *i* ]] && return
 
+# Our own tools (force-quit, power-menu, rice-theme…) live here.
+PATH="$HOME/.local/bin:$PATH"
+
 HISTSIZE=10000
 HISTFILESIZE=20000
 HISTCONTROL=ignoreboth:erasedups

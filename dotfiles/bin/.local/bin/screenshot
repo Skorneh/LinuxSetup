@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# screenshot region  drag a box, copy to clipboard
+# screenshot full    whole screen, copy to clipboard
+# screenshot save    whole screen, saved to ~/Pictures/Screenshots
+case "${1:-region}" in
+    region)
+        area="$(slurp)" || exit 0
+        grim -g "$area" - | wl-copy --type image/png
+        notify-send -t 2000 "Screenshot" "Copied to clipboard" ;;
+    full)
+        grim - | wl-copy --type image/png
+        notify-send -t 2000 "Screenshot" "Copied to clipboard" ;;
+    save)
+        dir="$HOME/Pictures/Screenshots"
+        mkdir -p "$dir"
+        file="$dir/Screenshot_$(date +%Y-%m-%d_%H-%M-%S).png"
+        grim "$file" && notify-send -t 3000 "Screenshot" "Saved to $file" ;;
+esac

@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Click the volume on the taskbar: pick where sound plays.
+# The current output is marked with ●.
+current="$(pactl get-default-sink)"
+mapfile -t sinks < <(pactl -f json list sinks | jq -r '.[] | "\(.name)\t\(.description)"')
+
+menu=""
+for sink in "${sinks[@]}"; do
+    name="${sink%%$'\t'*}" desc="${sink#*$'\t'}"
+    [[ "$name" == "$current" ]] && mark="●" || mark=" "
+    menu+="$mark $desc"$'\n'
+done
+
+choice="$(printf '%s' "$menu" | rofi -dmenu -i -p "Sound output")" || exit 0
+choice="${choice:2}"
+for sink in "${sinks[@]}"; do
+    if [[ "${sink#*$'\t'}" == "$choice" ]]; then
+        pactl set-default-sink "${sink%%$'\t'*}"
+        notify-send -t 2000 "Sound" "Playing on $choice"
+    fi
+done

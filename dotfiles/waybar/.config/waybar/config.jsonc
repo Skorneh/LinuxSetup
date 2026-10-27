@@ -1,0 +1,50 @@
+// Taskbar. Colors are in style.css, made by rice-theme.
+{
+    "layer": "top",
+    "position": "bottom",
+    "height": 34,
+    "spacing": 2,
+    "modules-left": ["custom/launcher"],
+    "modules-center": ["wlr/taskbar"],
+    "modules-right": ["network", "pulseaudio", "clock", "custom/power"],
+
+    "custom/launcher": {
+        "format": "",
+        "tooltip": false,
+        "on-click": "rofi -show drun"
+    },
+    "wlr/taskbar": {
+        "format": "{icon}",
+        "icon-size": 18,
+        "icon-theme": "Papirus-Dark",
+        "tooltip-format": "{title}",
+        "on-click": "activate",
+        "on-click-middle": "close",
+        "active-first": false
+    },
+    "network": {
+        "format-ethernet": "",
+        "format-wifi": "",
+        "format-disconnected": "",
+        "tooltip-format": "{ifname}: {ipaddr}",
+        "tooltip-format-wifi": "{essid} ({signalStrength}%)",
+        "on-click": "$HOME/.local/bin/network-menu"
+    },
+    "pulseaudio": {
+        "format": "{icon} {volume}%",
+        "format-muted": " muted",
+        "format-icons": { "headphone": "", "default": ["", "", ""] },
+        "scroll-step": 5,
+        "on-click": "$HOME/.local/bin/sound-output",
+        "on-click-right": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"
+    },
+    "clock": {
+        "format": "{:%I:%M %p}",
+        "tooltip-format": "{:%A, %B %d %Y}"
+    },
+    "custom/power": {
+        "format": "",
+        "tooltip": false,
+        "on-click": "$HOME/.local/bin/power-menu"
+    }
+}
