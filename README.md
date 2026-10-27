@@ -45,6 +45,7 @@ window, so it matches the colors automatically.
 
 | Tool | Opens with | Does |
 |---|---|---|
+| `spotlight` | Ctrl+Space | Search apps and files in your home folder together, like Spotlight. Enter opens it. |
 | `force-quit` | Ctrl+Shift+Esc | Lists open apps with memory use. Pick one, confirm, it's closed. |
 | `power-menu` | Ctrl+Alt+Delete, power icon on the taskbar | Lock, Log out, Restart, Shut down. |
 | `sound-output` | Click the volume on the taskbar | Pick speakers, headset, etc. |
@@ -110,6 +111,7 @@ installing them. After rebooting:
 | Keys | Action |
 |---|---|
 | Win | App launcher |
+| Ctrl+Space | Search apps and files (Spotlight) |
 | Win+R | Run a command |
 | Win+E | Files (Nemo) |
 | Ctrl+Alt+T | Terminal |

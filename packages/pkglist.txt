@@ -9,6 +9,8 @@ man-db
 unzip
 pciutils
 jq
+fd
+xdg-utils
 gettext
 
 # --- Login ---
