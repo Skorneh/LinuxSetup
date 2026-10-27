@@ -6,6 +6,8 @@ window#waybar { background-color: #${BG}; color: #${TEXT}; border-top: 1px solid
 #taskbar button { padding: 0 6px; margin: 2px; background-color: transparent; }
 #taskbar button.active { background-color: #${SURFACE}; box-shadow: inset 0 -2px #${ACCENT}; }
 #taskbar button:hover { background-color: #${SURFACE}; }
+#tray { padding: 0 10px; }
+#tray menu { background-color: #${SURFACE}; color: #${TEXT}; }
 #network, #pulseaudio, #clock, #custom-power { padding: 0 10px; color: #${TEXT}; }
 #network.disconnected, #pulseaudio.muted { color: #${MUTED}; }
 #custom-power { padding-right: 14px; }

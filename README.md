@@ -28,7 +28,7 @@ All scripts are safe to run more than once.
 | Piece | What it is | Config |
 |---|---|---|
 | Window manager | labwc | `dotfiles/labwc/.config/labwc/` (`rc.xml` = settings and shortcuts, `autostart` = what starts with it) |
-| Taskbar | Waybar, bottom | `dotfiles/waybar/…/config.jsonc` |
+| Taskbar | Waybar, bottom, with a tray area for apps like Discord and Steam | `dotfiles/waybar/…/config.jsonc` |
 | Launcher | rofi | `dotfiles/rofi/…/config.rasi` |
 | Terminal | kitty, Maple Mono NF | `dotfiles/kitty/…/kitty.conf` |
 | Files | Nemo | |

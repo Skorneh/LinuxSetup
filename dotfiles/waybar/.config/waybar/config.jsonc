@@ -6,7 +6,7 @@
     "spacing": 2,
     "modules-left": ["custom/launcher"],
     "modules-center": ["wlr/taskbar"],
-    "modules-right": ["network", "pulseaudio", "clock", "custom/power"],
+    "modules-right": ["tray", "network", "pulseaudio", "clock", "custom/power"],
 
     "custom/launcher": {
         "format": "",
@@ -21,6 +21,10 @@
         "on-click": "activate",
         "on-click-middle": "close",
         "active-first": false
+    },
+    "tray": {
+        "icon-size": 16,
+        "spacing": 8
     },
     "network": {
         "format-ethernet": "",
