@@ -1,0 +1,46 @@
+# Base desktop packages (official repos). One package per line.
+# Lines starting with # and blank lines are ignored.
+
+# --- Build tools / repo tooling ---
+base-devel
+git
+stow
+man-db
+unzip
+pciutils
+
+# --- KDE Plasma (core pieces only) ---
+plasma-desktop
+sddm
+sddm-kcm
+kscreen
+plasma-nm
+plasma-pa
+powerdevil
+xdg-desktop-portal-kde
+polkit-kde-agent
+kde-gtk-config
+breeze-gtk
+plasma-systemmonitor
+
+# --- Apps ---
+dolphin
+konsole
+spectacle
+ark
+firefox
+discord
+
+# --- Audio ---
+pipewire
+pipewire-pulse
+pipewire-alsa
+wireplumber
+
+# --- Network ---
+networkmanager
+
+# --- Fonts ---
+noto-fonts
+noto-fonts-emoji
+ttf-liberation
