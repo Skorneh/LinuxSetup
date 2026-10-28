@@ -8,16 +8,23 @@ source "$(dirname "$0")/scripts/lib.sh"
 require_arch_user
 
 # --- 0. Correct clock ---
-# Downloads fail ("certificate is not yet valid") if the clock is wrong, which
-# happens after rolling a VM back to a snapshot. Sync it first.
+# Downloads fail ("certificate is not yet valid") if the clock is wrong. That
+# happens after rolling a VM back to a snapshot that includes its memory: the
+# clock resumes at the snapshot's time and still claims to be synced. So
+# compare against a web server's clock, fix it if it's off, then keep syncing.
 info "Checking the clock..."
+web_time="$(curl -sI --max-time 10 http://archlinux.org | sed -n 's/^[Dd]ate: //p' | tr -d '\r')"
+if [[ -n "$web_time" ]]; then
+    drift=$(( $(date -d "$web_time" +%s) - $(date +%s) ))
+    if (( ${drift#-} > 60 )); then
+        warn "Clock was off by ${drift#-} seconds; fixing it."
+        sudo date -s "$web_time" >/dev/null
+    fi
+else
+    warn "Couldn't check the clock online; if downloads fail with a certificate error, fix the time and run this again."
+fi
 sudo timedatectl set-ntp true
-for _ in $(seq 30); do
-    [[ "$(timedatectl show -p NTPSynchronized --value)" == yes ]] && break
-    sleep 1
-done
-[[ "$(timedatectl show -p NTPSynchronized --value)" == yes ]] \
-    || warn "Clock isn't synced yet; if downloads fail with a certificate error, wait a minute and run this again."
+sudo systemctl restart systemd-timesyncd 2>/dev/null || true
 
 # --- 1. Official packages ---
 info "Updating system and installing base packages..."
