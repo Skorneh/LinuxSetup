@@ -13,11 +13,17 @@ mapfile -t pkgs < <(read_list "$REPO_DIR/packages/pkglist.txt")
 sudo pacman -Syu --needed --noconfirm "${pkgs[@]}"
 
 # --- 2. paru (AUR helper) ---
-if ! command -v paru >/dev/null; then
-    info "Installing paru..."
+# Built from source. The prebuilt paru-bin can lag behind pacman and then
+# fails with "libalpm.so.15: cannot open shared object file", so a paru that
+# won't start gets replaced too.
+if ! paru --version >/dev/null 2>&1; then
+    for old in paru-bin-debug paru-bin; do
+        if pacman -Qq "$old" &>/dev/null; then sudo pacman -Rns --noconfirm "$old"; fi
+    done
+    info "Installing paru (compiles from source, takes a few minutes)..."
     tmp="$(mktemp -d)"
-    git clone --depth 1 https://aur.archlinux.org/paru-bin.git "$tmp/paru-bin"
-    (cd "$tmp/paru-bin" && makepkg -si --noconfirm)
+    git clone --depth 1 https://aur.archlinux.org/paru.git "$tmp/paru"
+    (cd "$tmp/paru" && makepkg -si --noconfirm)
     rm -rf "$tmp"
 fi
 
