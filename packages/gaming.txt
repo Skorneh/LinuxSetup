@@ -5,6 +5,8 @@
 steam
 lutris
 wine-staging
+wine-mono
+wine-gecko
 winetricks
 gamemode
 lib32-gamemode

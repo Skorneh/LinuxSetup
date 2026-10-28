@@ -2,7 +2,7 @@
 [global]
     font = Maple Mono NF 10
     origin = bottom-right
-    offset = (12, 48)
+    offset = (8, 8)
     width = 320
     frame_width = 1
     corner_radius = 6

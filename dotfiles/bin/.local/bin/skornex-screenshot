@@ -6,10 +6,10 @@ case "${1:-region}" in
     region)
         area="$(slurp)" || exit 0
         grim -g "$area" - | wl-copy --type image/png
-        notify-send -t 2000 "Screenshot" "Copied to clipboard" ;;
+        notify-send -t 2000 "Screenshot" "Copied to clipboard. Paste it anywhere, or in Paint." ;;
     full)
         grim - | wl-copy --type image/png
-        notify-send -t 2000 "Screenshot" "Copied to clipboard" ;;
+        notify-send -t 2000 "Screenshot" "Copied to clipboard. Paste it anywhere, or in Paint." ;;
     save)
         dir="$HOME/Pictures/Screenshots"
         mkdir -p "$dir"

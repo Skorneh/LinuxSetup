@@ -26,6 +26,7 @@ greetd
 
 # --- Window manager and the pieces around it ---
 labwc
+xorg-xwayland
 kitty
 dunst
 libnotify
@@ -57,6 +58,7 @@ dconf
 nemo
 gvfs
 mousepad
+drawing
 firefox
 discord
 
