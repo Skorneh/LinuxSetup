@@ -181,7 +181,8 @@ out of HA and replication; it's temporary.
 
 Run steps 1–2 only, and take a snapshot right after `archinstall` so you can
 roll back. When you're done, Shutdown → More → Remove to free its resources.
-`gaming.sh` warns you if it detects a VM.
+`gaming.sh` also runs in a VM to check that it installs: it warns you, skips
+the GPU drivers, and installs Steam and the rest. Games will be slow there.
 
 ## Keep secrets out
 

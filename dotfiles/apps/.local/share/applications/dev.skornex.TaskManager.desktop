@@ -7,6 +7,6 @@ Name=Task Manager
 Comment=See running apps and end the ones that are stuck
 Exec=skornex-taskmgr
 StartupWMClass=dev.skornex.TaskManager
-Icon=utilities-system-monitor
+Icon=skornex-taskmgr
 Categories=System;Monitor;
 Keywords=task;manager;process;kill;force;quit;memory;cpu;

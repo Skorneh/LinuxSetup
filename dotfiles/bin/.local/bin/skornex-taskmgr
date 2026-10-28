@@ -95,7 +95,7 @@ class TaskManager(Gtk.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title="Task Manager")
         self.set_default_size(680, 560)
-        self.set_icon_name("utilities-system-monitor")
+        self.set_icon_name("skornex-taskmgr")
 
         self.apps = {}
         for info in Gio.AppInfo.get_all():

@@ -51,11 +51,12 @@ fi
 
 echo "Your GPU(s):"
 echo "$gpus" | sed 's/^/    /'
-echo "Driver packages: ${drivers[*]:-none} ${aur_drivers[*]:-}"
-confirm "Install these drivers?" || die "Stopped before installing drivers."
-
-((${#drivers[@]})) && sudo pacman -S --needed --noconfirm "${drivers[@]}"
-((${#aur_drivers[@]})) && paru -S --needed --noconfirm "${aur_drivers[@]}"
+if ((${#drivers[@]} + ${#aur_drivers[@]})); then
+    echo "Driver packages: ${drivers[*]:-} ${aur_drivers[*]:-}"
+    confirm "Install these drivers?" || die "Stopped before installing drivers."
+    if ((${#drivers[@]})); then sudo pacman -S --needed --noconfirm "${drivers[@]}"; fi
+    if ((${#aur_drivers[@]})); then paru -S --needed --noconfirm "${aur_drivers[@]}"; fi
+fi
 
 # --- 3. Gaming packages ---
 info "Installing Steam, Lutris, GameMode and MangoHud..."
