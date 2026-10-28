@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Click the network icon on the taskbar.
 # Shows your connection, nearby Wi-Fi to join, and a way into the full menu.
+# shellcheck source=../lib/rice/popup.sh
+. ~/.local/lib/rice/popup.sh
+popup_toggle
+
 status="$(nmcli -t -f DEVICE,TYPE,STATE,CONNECTION device | awk -F: '$3=="connected" {print $4 " (" $2 ")"}' | head -1)"
 header="Connected: ${status:-nothing}"
 
@@ -11,7 +15,7 @@ if nmcli -t -f TYPE device | grep -qx wifi; then
 fi
 
 choice="$(printf '%s\n%s\nMore settings…\n' "$header" "$wifi" | grep -v '^$' \
-    | rofi -dmenu -i -p "Network")" || exit 0
+    | popup_menu 200 "Network")" || exit 0
 
 case "$choice" in
     "Connected:"*) exit 0 ;;

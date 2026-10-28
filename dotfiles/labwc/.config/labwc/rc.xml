@@ -31,12 +31,26 @@
     <osd show="yes" style="thumbnail" />
   </windowSwitcher>
 
+  <!--
+    Mouse: labwc's defaults (drag title bars, double-click to maximize…), but
+    clicking the empty desktop does nothing. Side buttons (back/forward) go
+    straight to the app, so Firefox and Nemo handle them themselves.
+  -->
+  <mouse>
+    <default />
+    <context name="Root">
+      <mousebind button="Left" action="Press"><action name="None" /></mousebind>
+      <mousebind button="Right" action="Press"><action name="None" /></mousebind>
+      <mousebind button="Middle" action="Press"><action name="None" /></mousebind>
+    </context>
+  </mouse>
+
   <keyboard>
     <numlock>on</numlock>
 
     <!-- Windows key alone: app launcher. -->
     <keybind key="Super_L" onRelease="yes">
-      <action name="Execute" command="rofi -show drun" />
+      <action name="Execute" command="~/.local/bin/launcher" />
     </keybind>
     <!-- Ctrl+Space: search apps and files, like Spotlight. -->
     <keybind key="C-space">

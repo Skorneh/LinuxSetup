@@ -5,3 +5,5 @@
 maplemono-nf
 # Turns the monitor off when idle (swayidle calls it).
 wlopm
+# Lets the taskbar's pinned apps switch to, minimize and check open windows.
+wlrctl

@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# The Recycle Bin button on the taskbar.
+#   recycle-bin status  icon for the taskbar: empty or full bin
+#   recycle-bin open    left-click: open it in Nemo
+#   recycle-bin empty   right-click: empty it, after asking
+full=$'\U000f01b4' empty=$'\U000f0a7a'   # Nerd Font bin icons
+case "${1:-status}" in
+    status)
+        count="$(gio trash --list 2>/dev/null | wc -l)"
+        if (( count > 0 )); then
+            jq -cn --arg n "$count" --arg icon "$full" '{text: $icon, class: "full", tooltip: "Recycle Bin (\($n) items)\nRight-click to empty"}'
+        else
+            jq -cn --arg icon "$empty" '{text: $icon, class: "empty", tooltip: "Recycle Bin (empty)"}'
+        fi ;;
+    open)
+        setsid -f nemo trash:/// >/dev/null 2>&1 ;;
+    empty)
+        # shellcheck source=../lib/rice/popup.sh
+        . ~/.local/lib/rice/popup.sh
+        popup_toggle
+        answer="$(printf 'Empty the Recycle Bin\nCancel\n' | popup_menu 260 "Delete everything in the Recycle Bin for good?")" || exit 0
+        [[ "$answer" == "Empty the Recycle Bin" ]] && gio trash --empty && notify-send -t 2000 "Recycle Bin" "Emptied" ;;
+esac

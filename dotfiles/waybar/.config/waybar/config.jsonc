@@ -1,50 +1,91 @@
-// Taskbar. Colors are in style.css, made by rice-theme.
+// Taskbar. Colors are in style.css (made by rice-theme). The open-apps list
+// and pinned-app settings are in taskbar.jsonc (made by taskbar-pins).
 {
     "layer": "top",
     "position": "bottom",
     "height": 34,
     "spacing": 2,
-    "modules-left": ["custom/launcher"],
-    "modules-center": ["wlr/taskbar"],
-    "modules-right": ["tray", "network", "pulseaudio", "clock", "custom/power"],
-
-    "custom/launcher": {
-        "format": "",
+    "include": [
+        "~/.config/waybar/taskbar.jsonc"
+    ],
+    "modules-left": [
+        "custom/search",
+        "image#pins",
+        "wlr/taskbar"
+    ],
+    "modules-right": [
+        "group/tray",
+        "custom/trash",
+        "network",
+        "pulseaudio",
+        "clock",
+        "custom/power"
+    ],
+    "custom/search": {
+        "format": "  Search",
         "tooltip": false,
-        "on-click": "rofi -show drun"
+        "on-click": "$HOME/.local/bin/spotlight",
+        "on-click-right": "$HOME/.local/bin/taskbar-pins menu"
     },
-    "wlr/taskbar": {
-        "format": "{icon}",
-        "icon-size": 18,
-        "icon-theme": "Papirus-Dark",
-        "tooltip-format": "{title}",
-        "on-click": "activate",
-        "on-click-middle": "close",
-        "active-first": false
+    "image#pins": {
+        "exec": "$HOME/.local/bin/taskbar-pins",
+        "size": 20,
+        "interval": 1
+    },
+    "group/tray": {
+        "orientation": "inherit",
+        "drawer": {
+            "click-to-reveal": true,
+            "transition-left-to-right": false
+        },
+        "modules": [
+            "custom/tray-toggle",
+            "tray"
+        ]
+    },
+    "custom/tray-toggle": {
+        "format": "",
+        "tooltip-format": "Show hidden icons"
     },
     "tray": {
         "icon-size": 16,
         "spacing": 8
     },
+    "custom/trash": {
+        "exec": "$HOME/.local/bin/recycle-bin status",
+        "return-type": "json",
+        "interval": 5,
+        "on-click": "$HOME/.local/bin/recycle-bin open",
+        "on-click-right": "$HOME/.local/bin/recycle-bin empty"
+    },
     "network": {
-        "format-ethernet": "",
-        "format-wifi": "",
-        "format-disconnected": "",
-        "tooltip-format": "{ifname}: {ipaddr}",
+        "format-ethernet": "󰈀",
+        "format-wifi": "󰖩",
+        "format-disconnected": "󰌘",
+        "tooltip-format-ethernet": "Wired: {ipaddr}",
         "tooltip-format-wifi": "{essid} ({signalStrength}%)",
+        "tooltip-format-disconnected": "Not connected",
         "on-click": "$HOME/.local/bin/network-menu"
     },
     "pulseaudio": {
         "format": "{icon} {volume}%",
-        "format-muted": " muted",
-        "format-icons": { "headphone": "", "default": ["", "", ""] },
+        "format-muted": "󰝟 muted",
+        "format-icons": {
+            "headphone": "",
+            "default": [
+                "",
+                "",
+                ""
+            ]
+        },
         "scroll-step": 5,
         "on-click": "$HOME/.local/bin/sound-output",
         "on-click-right": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"
     },
     "clock": {
         "format": "{:%I:%M %p}",
-        "tooltip-format": "{:%A, %B %d %Y}"
+        "tooltip-format": "<tt>{calendar}</tt>",
+        "on-click": "$HOME/.local/bin/calendar-popup"
     },
     "custom/power": {
         "format": "",

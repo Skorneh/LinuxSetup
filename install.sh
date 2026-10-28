@@ -52,10 +52,13 @@ for pkg_dir in "$REPO_DIR"/dotfiles/*/; do
     done < <(find "$pkg_dir" -type f -print0)
     stow --dir="$REPO_DIR/dotfiles" --target="$HOME" --no-folding --restow "$pkg"
 done
+# Remove links left behind by files that were deleted from the repo.
+find "$HOME/.config" "$HOME/.local" -xtype l -lname '*LinuxSetup/dotfiles/*' -delete 2>/dev/null || true
 
 # --- 5. Colors ---
 info "Applying colors..."
 "$HOME/.local/bin/rice-theme"
+"$HOME/.local/bin/taskbar-pins" refresh
 
 # --- 6. Boot straight to the lock screen ---
 # greetd logs you in once at boot and starts labwc with LOCK_ON_START set, so

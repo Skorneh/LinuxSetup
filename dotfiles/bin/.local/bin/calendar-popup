@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Click the clock: this month's calendar, today in bold.
+# shellcheck source=../lib/rice/popup.sh
+. ~/.local/lib/rice/popup.sh
+popup_toggle
+today="$(date +%-d)"
+month="$(cal | sed -E "3,\$ s/(^| )($today)( |\$)/\1<b>\2<\/b>\3/")"
+exec rofi -markup -e "<b>$(date +'%A, %B %-d')</b>
+
+$month" -theme-str "window { location: south east; anchor: south east; x-offset: -50px; $POPUP_ABOVE_BAR width: 260px; }"

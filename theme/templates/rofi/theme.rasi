@@ -11,6 +11,9 @@ inputbar { background-color: @surface; border-radius: 6px; padding: 8px 12px; sp
 prompt { text-color: @muted; }
 entry { placeholder: "Search"; placeholder-color: @muted; }
 listview { lines: 8; scrollbar: false; }
+message { padding: 2px 4px 6px; }
+textbox { text-color: @fg; }
+error-message { padding: 4px; }
 element { padding: 6px 10px; spacing: 10px; border-radius: 6px; }
 element selected.normal { background-color: @surface; text-color: @fg; }
 element-icon { size: 22px; }

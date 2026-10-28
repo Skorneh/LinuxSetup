@@ -28,7 +28,7 @@ All scripts are safe to run more than once.
 | Piece | What it is | Config |
 |---|---|---|
 | Window manager | labwc | `dotfiles/labwc/.config/labwc/` (`rc.xml` = settings and shortcuts, `autostart` = what starts with it) |
-| Taskbar | Waybar, bottom, with a tray area for apps like Discord and Steam | `dotfiles/waybar/…/config.jsonc` |
+| Taskbar | Waybar, bottom: search bar, pinned apps, open apps, hidden-icons tray, Recycle Bin, network, volume, clock, power | `dotfiles/waybar/…/config.jsonc` |
 | Launcher | rofi | `dotfiles/rofi/…/config.rasi` |
 | Terminal | kitty, Maple Mono NF | `dotfiles/kitty/…/kitty.conf` |
 | Files | Nemo | |
@@ -45,7 +45,11 @@ window, so it matches the colors automatically.
 
 | Tool | Opens with | Does |
 |---|---|---|
-| `spotlight` | Ctrl+Space | Search apps and files in your home folder together, like Spotlight. Enter opens it. |
+| `spotlight` | Search bar on the taskbar, Ctrl+Space | Search apps and files in your home folder together, like Spotlight. Enter opens it. |
+| `launcher` | Windows key | The app list, above the search bar. |
+| `taskbar-pins` | Right-click the search bar | Pin or unpin apps. Pins live in `~/.config/rice/pins` (Files is pinned by default). |
+| `recycle-bin` | Bin icon on the taskbar | Click to open it in Nemo, right-click to empty it. |
+| `calendar-popup` | Click the clock | This month's calendar. |
 | `force-quit` | Ctrl+Shift+Esc | Lists open apps with memory use. Pick one, confirm, it's closed. |
 | `power-menu` | Ctrl+Alt+Delete, power icon on the taskbar | Lock, Log out, Restart, Shut down. |
 | `sound-output` | Click the volume on the taskbar | Pick speakers, headset, etc. |
@@ -132,7 +136,22 @@ installing them. After rebooting:
 | Win+Shift+R | Reload labwc after editing `rc.xml` |
 
 Dragging a window to a screen edge snaps it to half the screen, a corner to a
-quarter, the top to maximize. Right-click the desktop for a small menu.
+quarter, the top to maximize. Clicking the empty desktop does nothing.
+
+### The taskbar
+
+- **Search bar** (far left): search apps and files. Right-click it to pin or
+  unpin apps.
+- **App buttons** start on the left: pinned apps first, then other open apps.
+  Each has three looks, like Windows: pinned but closed (plain), open (thin
+  line under it), and the one you're using (highlighted, bright line). Click
+  the app you're using to minimize it.
+- **^** (right side) shows hidden icons, such as Discord and Steam when
+  they're closed to the tray.
+- **Menus** (network, volume, clock, power) open as a small box above their
+  button. Click the button again, or anywhere else, to close it.
+
+Mouse side buttons (back/forward) work in Firefox and Nemo on their own.
 
 Alt+Print Screen can't grab just the current window on labwc, so it works like
 Print Screen (drag a box around it).

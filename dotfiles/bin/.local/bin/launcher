@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Windows key: the app list, opening just above the search bar.
+# shellcheck source=../lib/rice/popup.sh
+. ~/.local/lib/rice/popup.sh
+popup_toggle
+exec rofi -show drun -theme-str "$popup_search_theme"

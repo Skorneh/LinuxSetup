@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# Pinned apps on the taskbar, like Windows.
+#
+#   taskbar-pins            list pins for the taskbar (Waybar calls this every second)
+#   taskbar-pins click ID   what clicking a pin does: open, switch to, or minimize
+#   taskbar-pins menu       right-click the search bar: pin or unpin apps
+#   taskbar-pins refresh    rebuild the taskbar's settings after pins change
+#
+# Pins are app IDs (the .desktop file name without .desktop), one per line,
+# in ~/.config/rice/pins. Each pin looks one of three ways:
+#   pinned  = not running, no line under it
+#   open    = running, thin line under it
+#   focused = the window you're using, highlighted with a brighter line
+pins="$HOME/.config/rice/pins"
+app_dirs=("$HOME/.local/share/applications" /usr/share/applications)
+
+desktop_file() {
+    local dir
+    for dir in "${app_dirs[@]}"; do
+        [[ -f "$dir/$1.desktop" ]] && { echo "$dir/$1.desktop"; return; }
+    done
+}
+
+# Read a key from the [Desktop Entry] section of a .desktop file.
+entry() {
+    awk -F= -v key="$2" '/^\[/ { if (seen++) exit } $1 == key { sub(/^[^=]*=/, ""); print; exit }' "$1"
+}
+
+icon_path() {
+    local icon="$1" f
+    [[ "$icon" == /* && -f "$icon" ]] && { echo "$icon"; return; }
+    for f in /usr/share/icons/Papirus/48x48/apps/"$icon".svg \
+             /usr/share/icons/hicolor/{256x256,128x128,64x64,48x48}/apps/"$icon".png \
+             /usr/share/icons/hicolor/scalable/apps/"$icon".svg \
+             /usr/share/pixmaps/"$icon".{png,svg}; do
+        [[ -f "$f" ]] && { echo "$f"; return; }
+    done
+    echo /usr/share/icons/Papirus/48x48/apps/application-x-executable.svg
+}
+
+# The names a pinned app's window might report, best guess first.
+app_ids() {
+    local id="$1" file wmclass exec
+    file="$(desktop_file "$id")"
+    if [[ -n "$file" ]]; then
+        wmclass="$(entry "$file" StartupWMClass)"
+        exec="$(entry "$file" Exec)"; exec="${exec%% *}"; exec="${exec##*/}"
+    fi
+    printf '%s\n' "$wmclass" "$id" "$exec" "${id,,}" "${wmclass,,}" | awk 'NF && !seen[$0]++'
+}
+
+# Prints focused / open / pinned, and the app_id that matched.
+state() {
+    local app
+    while read -r app; do
+        if wlrctl toplevel find "app_id:$app" state:focused 2>/dev/null; then echo "focused $app"; return; fi
+        if wlrctl toplevel find "app_id:$app" 2>/dev/null; then echo "open $app"; return; fi
+    done < <(app_ids "$1")
+    echo "pinned"
+}
+
+list() {
+    local id file out=() st
+    [[ -f "$pins" ]] || { echo "[]"; return; }
+    while read -r id; do
+        [[ -z "$id" || "$id" == \#* ]] && continue
+        file="$(desktop_file "$id")" || true
+        [[ -n "$file" ]] || continue
+        read -r st _ <<<"$(state "$id")"
+        out+=("$(jq -cn --arg path "$(icon_path "$(entry "$file" Icon)")" --arg marker "$st" \
+            --arg tooltip "$(entry "$file" Name)" --arg click "$HOME/.local/bin/taskbar-pins click $id" \
+            '{path: $path, marker: $marker, tooltip: $tooltip, "on-click": $click}')")
+    done < "$pins"
+    (IFS=,; echo "[${out[*]}]")
+}
+
+click() {
+    local st app
+    read -r st app <<<"$(state "$1")"
+    case "$st" in
+        focused) wlrctl toplevel minimize "app_id:$app" ;;   # like Windows: click the active app to minimize it
+        open)    wlrctl toplevel focus "app_id:$app" ;;
+        *)       setsid -f gtk-launch "$1" >/dev/null 2>&1 ;;
+    esac
+}
+
+# Pinned apps are hidden from the list of open windows, so they don't show twice.
+refresh() {
+    local ignore
+    ignore="$(grep -v '^\s*\(#\|$\)' "$pins" 2>/dev/null | while read -r id; do app_ids "$id"; done | jq -R . | jq -cs .)"
+    cat > "$HOME/.config/waybar/taskbar.jsonc" <<JSON
+// Made by taskbar-pins refresh. Edit ~/.config/rice/pins instead.
+{
+    "wlr/taskbar": {
+        "format": "{icon}",
+        "icon-size": 20,
+        "icon-theme": "Papirus-Dark",
+        "tooltip-format": "{title}",
+        "on-click": "activate",
+        "on-click-middle": "close",
+        "active-first": false,
+        "ignore-list": ${ignore:-[]}
+    }
+}
+JSON
+    pkill -SIGUSR2 -x waybar || true   # reload the taskbar
+}
+
+menu() {
+    # shellcheck source=../lib/rice/popup.sh
+    . ~/.local/lib/rice/popup.sh
+    popup_toggle
+    local lines="" id file name pinned
+    pinned="$(grep -v '^\s*\(#\|$\)' "$pins" 2>/dev/null)"
+    while read -r id; do
+        [[ -n "$id" ]] || continue
+        file="$(desktop_file "$id")"; [[ -n "$file" ]] || continue
+        lines+="Unpin  $(entry "$file" Name)"$'\t'"$id"$'\n'
+    done <<<"$pinned"
+    for file in "${app_dirs[@]}"/*.desktop; do
+        [[ -f "$file" ]] || continue
+        [[ "$(entry "$file" NoDisplay)" == true ]] && continue
+        id="$(basename "$file" .desktop)"
+        grep -qxF "$id" <<<"$pinned" && continue
+        name="$(entry "$file" Name)"; [[ -n "$name" ]] || continue
+        lines+="Pin    $name"$'\t'"$id"$'\n'
+    done
+    local choice
+    choice="$(printf '%s' "$lines" | sort -u -t$'\t' -k1,1 | awk -F'\t' '{print $1}' \
+        | rofi -dmenu -i -p "Pin to taskbar" -theme-str "$popup_search_theme")" || exit 0
+    id="$(printf '%s' "$lines" | awk -F'\t' -v c="$choice" '$1 == c {print $2; exit}')"
+    [[ -n "$id" ]] || exit 0
+    if [[ "$choice" == Unpin* ]]; then
+        grep -vxF "$id" "$pins" > "$pins.tmp"; cat "$pins.tmp" > "$pins"; rm -f "$pins.tmp"
+    else
+        echo "$id" >> "$pins"
+    fi
+    refresh
+}
+
+case "${1:-list}" in
+    list)    list ;;
+    click)   click "$2" ;;
+    menu)    menu ;;
+    refresh) refresh ;;
+esac
