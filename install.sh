@@ -34,6 +34,15 @@ if ((${#aur[@]})); then
     paru -S --needed --noconfirm "${aur[@]}"
 fi
 
+# --- 3b. Packages SkorneX no longer uses ---
+mapfile -t old < <(read_list "$REPO_DIR/packages/removelist.txt")
+for pkg in "${old[@]}"; do
+    if pacman -Qq "$pkg" &>/dev/null; then
+        info "Removing $pkg (no longer used)..."
+        sudo pacman -Rns --noconfirm "$pkg" || warn "Couldn't remove $pkg; something else still needs it."
+    fi
+done
+
 # --- 4. Dotfiles ---
 # Every folder in dotfiles/ is a stow package whose contents mirror $HOME.
 # Existing files that would block a symlink are moved to ~/.dotfiles-backup.

@@ -13,7 +13,8 @@ tool I own.
 |---|---|
 | `install.sh` | Installs everything, links the configs, applies the colors, sets up booting straight to the lock screen, debloats Firefox. Adds the guest agent in a Proxmox VM. |
 | `gaming.sh` | Real PC only: enables `[multilib]`, detects your GPU and installs drivers, then Steam, Lutris, GameMode, MangoHud. |
-| `packages/` | Package lists: `pkglist.txt` (official repos), `aurlist.txt` (AUR), `gaming.txt`. |
+| `packages/` | Package lists: `pkglist.txt` (official repos), `aurlist.txt` (AUR), `gaming.txt`, and `removelist.txt` (old packages to remove). |
+| `dotfiles/apps/` | App list tweaks: kitty shown as Terminal, Mousepad as Notepad, and helper entries hidden from search (Rofi, xgps, webcam test tools…). |
 | `dotfiles/` | Config files, linked into `~` with GNU Stow. Each folder mirrors your home folder. |
 | `dotfiles/skornex/.config/skornex/colors` | **The one file with all the colors.** |
 | `dotfiles/skornex/.config/skornex/pins` | Apps pinned to the taskbar. |

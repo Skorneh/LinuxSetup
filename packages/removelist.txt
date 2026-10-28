@@ -1,0 +1,6 @@
+# Packages SkorneX used to install but doesn't anymore. install.sh removes
+# them (and anything they pulled in) if they're still on the system.
+# One package per line; lines starting with # are ignored.
+
+# Old taskbar, replaced by SkorneXBar. Also brings out its GPS tools (xgps).
+waybar

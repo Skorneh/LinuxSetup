@@ -18,10 +18,11 @@ window.bar { background-color: #${BG}; border-top: 1px solid #${BORDER}; }
    closed = pinned but not running, plain
    open   = running, short line under it
    active = the app you're using, highlighted with a brighter line */
-.bar button.app { padding: 0 8px; }
-.bar button.app.open { box-shadow: inset 0 -2px #${BORDER}; }
-.bar button.app.active { background-color: #${SURFACE}; box-shadow: inset 0 -2px #${ACCENT}; }
-.bar button.app.dragging { background-color: #${BORDER}; }
+.bar .app { border-radius: 4px; margin: 3px 1px; }
+.bar .app:hover { background-color: #${SURFACE}; }
+.bar .app.open { box-shadow: inset 0 -2px #${BORDER}; }
+.bar .app.active { background-color: #${SURFACE}; box-shadow: inset 0 -2px #${ACCENT}; }
+.bar .app.dragging { background-color: #${BORDER}; }
 
 /* Pop-up panels */
 window.flyout { background-color: #${BG}; border: 1px solid #${BORDER}; border-radius: 8px; }

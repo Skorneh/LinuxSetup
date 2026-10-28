@@ -185,23 +185,31 @@ def write_pins(pins):
 
 # --- Taskbar app buttons ----------------------------------------------------
 
-class AppButton(Gtk.Button):
-    """One app on the taskbar: pinned, open, or both."""
+class AppButton(Gtk.EventBox):
+    """One app on the taskbar: pinned, open, or both.
+
+    Built from a plain event box rather than a GTK button, because GTK buttons
+    keep the mouse to themselves and that breaks dragging."""
 
     def __init__(self, bar, key, info):
         super().__init__()
         self.bar, self.key, self.info = bar, key, info
         self.windows = []
-        self.set_relief(Gtk.ReliefStyle.NONE)
-        self.set_can_focus(False)
         self.get_style_context().add_class("app")
         self.image = Gtk.Image()
+        self.image.set_margin_start(8)
+        self.image.set_margin_end(8)
         self.add(self.image)
         self.set_icon()
-        self.add_events(Gdk.EventMask.BUTTON_MOTION_MASK)
+        self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK
+                        | Gdk.EventMask.POINTER_MOTION_MASK | Gdk.EventMask.ENTER_NOTIFY_MASK
+                        | Gdk.EventMask.LEAVE_NOTIFY_MASK)
         self.connect("button-press-event", self.on_press)
         self.connect("motion-notify-event", self.on_motion)
         self.connect("button-release-event", self.on_release)
+        # Hover look (the :hover style), since event boxes don't track it themselves.
+        self.connect("enter-notify-event", lambda *_: self.set_state_flags(Gtk.StateFlags.PRELIGHT, False))
+        self.connect("leave-notify-event", lambda *_: self.unset_state_flags(Gtk.StateFlags.PRELIGHT))
         self.press_x = None
         self.dragging = False
 
@@ -284,6 +292,7 @@ class AppButton(Gtk.Button):
             return False
         if not self.dragging and abs(event.x - self.press_x) > 8:
             self.dragging = True
+            self.bar.dragging = True        # the bar holds still while you drag
             self.get_style_context().add_class("dragging")
         if self.dragging:
             box = self.get_parent()
@@ -299,12 +308,14 @@ class AppButton(Gtk.Button):
         elif event.button == 1 and self.press_x is not None:
             if self.dragging:
                 self.get_style_context().remove_class("dragging")
+                self.bar.dragging = False
                 self.bar.reordered()
             else:
                 self.click()
         self.press_x = None
         self.dragging = False
-        return False
+        self.bar.dragging = False
+        return True
 
 
 # --- Tray (hidden icons): StatusNotifierItem host and watcher ---------------
@@ -543,6 +554,7 @@ class Bar(Gtk.Window):
         self.screen = Xfw.Screen.get_default()
         self.closed = set()
         self.sync_pending = False
+        self.dragging = False
         self.screen.connect("window-opened", lambda _s, w: self.watch_window(w))
         self.screen.connect("window-closed", lambda _s, w: self.on_window_closed(w))
         self.screen.connect("active-window-changed", self.on_active_changed)
@@ -630,7 +642,7 @@ class Bar(Gtk.Window):
             if not button.info:
                 button.set_icon()
             button.update_look()
-            if not button.dragging:
+            if not self.dragging:
                 self.taskbar.reorder_child(button, index)
         return False
 
