@@ -80,6 +80,13 @@ def spawn(*cmd):
         pass
 
 
+def after_menu(callback):
+    """Run a right-click menu choice once the menu has fully closed. Acting
+    while it's still closing (say, a new window popping up) can make Wayland
+    reject the menu and shut the whole bar down."""
+    GLib.timeout_add(150, lambda: callback() and False)
+
+
 def label(text, *classes):
     widget = Gtk.Label(label=text)
     for c in classes:
@@ -237,7 +244,7 @@ class AppButton(Gtk.Button):
 
         def item(text, callback):
             mi = Gtk.MenuItem(label=text)
-            mi.connect("activate", lambda *_: callback())
+            mi.connect("activate", lambda *_: after_menu(callback))
             menu.append(mi)
 
         if self.info:
@@ -981,7 +988,7 @@ class Desktop(Gtk.Window):
             for text, callback in (("Open", lambda: spawn("nemo", "trash:///")),
                                    ("Empty Recycle Bin", self.confirm_empty)):
                 item = Gtk.MenuItem(label=text)
-                item.connect("activate", lambda _i, c=callback: c())
+                item.connect("activate", lambda _i, c=callback: after_menu(c))
                 menu.append(item)
             menu.show_all()
             menu.attach_to_widget(self.icon, None)

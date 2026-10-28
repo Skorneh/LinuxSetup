@@ -147,7 +147,9 @@ Firefox and Nemo on their own.
 - **Edit a themed config** (anything in `theme/templates/`): edit the template
   in the repo, then run `skornex-theme`. The file in `~/.config` gets overwritten.
 - **Change SkorneXBar:** edit `dotfiles/bin/.local/bin/skornex-bar` (Python),
-  then run `pkill -f skornex-bar; skornex-bar &`.
+  then run `pkill -f skornex-bar`. It restarts by itself a second later.
+- **SkorneXBar crashed or acts up?** It restarts by itself. The error is in
+  `~/.cache/skornex-bar.log` (`tail -50 ~/.cache/skornex-bar.log`).
 - **Add a new config file to the repo:** move it into the matching place under
   `dotfiles/<name>/`, then run `./install.sh` again to link it.
 - **Installed something new?** Run `pkgcheck` to see what isn't tracked, and

@@ -23,7 +23,7 @@ done < <(find "$templates" -type f -print0)
 # Reload what's running. Nothing to do outside a desktop session.
 if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
     labwc -r 2>/dev/null || true
-    pkill -f skornex-bar && (setsid -f "$HOME/.local/bin/skornex-bar" >/dev/null 2>&1)
+    pkill -f '\.local/bin/skornex-bar$' || true   # autostart starts it again with the new colors
     pkill -x dunst && (dunst >/dev/null 2>&1 &)
     pkill -x swaybg && (swaybg -c "#$BG" >/dev/null 2>&1 &)
     pkill -USR1 -x kitty || true
