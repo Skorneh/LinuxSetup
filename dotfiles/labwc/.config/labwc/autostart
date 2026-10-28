@@ -26,8 +26,6 @@ keep_running skornex-bar
 keep_running skornex-desktop
 dunst >/dev/null 2>&1 &
 /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 >/dev/null 2>&1 &
-wl-paste --type text --watch cliphist store >/dev/null 2>&1 &
-wl-paste --type image --watch cliphist store >/dev/null 2>&1 &
 
 # Lock after 10 minutes idle, monitor off after 15. Videos and games that
 # ask the screen to stay on are respected.
@@ -47,6 +45,6 @@ gsettings set org.xfce.mousepad.preferences.view show-line-numbers true
 gsettings set org.xfce.mousepad.preferences.view color-scheme oblivion
 gsettings set org.xfce.mousepad.preferences.view highlight-current-line true
 
-# Files (Nemo): double-clicking a script opens it in Notepad instead of running
-# it. Right-click > Open With still runs it when you mean to.
-gsettings set org.nemo.preferences executable-text-activation display
+# Files (Nemo): scripts use Nemo's normal behavior (it asks whether to run or
+# open them). Undoes an earlier SkorneX setting on machines that had it.
+gsettings reset org.nemo.preferences executable-text-activation

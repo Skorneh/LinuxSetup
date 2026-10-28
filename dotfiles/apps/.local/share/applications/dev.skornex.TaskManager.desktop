@@ -1,9 +1,12 @@
 [Desktop Entry]
+# Named after the window's app ID (dev.skornex.TaskManager) so the taskbar
+# can match the open window to this entry and show its icon.
 # SkorneX Task Manager (skornex-taskmgr). Also opens with Ctrl+Shift+Esc.
 Type=Application
 Name=Task Manager
 Comment=See running apps and end the ones that are stuck
 Exec=skornex-taskmgr
+StartupWMClass=dev.skornex.TaskManager
 Icon=utilities-system-monitor
 Categories=System;Monitor;
 Keywords=task;manager;process;kill;force;quit;memory;cpu;

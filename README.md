@@ -52,8 +52,7 @@ Works like the Windows taskbar:
 - **^**: hidden icons in a small pop-up. Apps that have a tray icon (Discord,
   Steam…) put it here while they're running, including after you close their
   window. Click one to open the app, right-click for its menu.
-- **Win+V** (clipboard history: click an entry to paste it) and **Win+R**
-  (Run) open SkorneXBar pop-ups too.
+- **Win+R** (Run) opens a SkorneXBar pop-up too.
 - **Network, volume, clock, power**: each opens a small panel in the
   bottom-right corner. Click the button again, click anywhere else, or press
   Esc to close it. Volume has a slider and the output list (speakers,
@@ -129,7 +128,6 @@ installing them. After rebooting:
 | Win+E | Files (Nemo) |
 | Ctrl+Alt+T | Terminal |
 | Win+L | Lock |
-| Win+V | Clipboard history, text and images (SkorneXBar pop-up) |
 | Win+D | Show desktop |
 | Win+Left / Win+Right | Snap to half the screen |
 | Win+Up / Win+Down | Maximize / minimize |

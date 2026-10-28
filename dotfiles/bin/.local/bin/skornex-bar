@@ -4,7 +4,6 @@
     skornex-bar          start the taskbar (labwc's autostart does this)
     skornex-bar search   open or close the search (Windows key, Ctrl+Space)
     skornex-bar power    open or close the power menu (Ctrl+Alt+Delete)
-    skornex-bar clipboard   clipboard history (Win+V)
     skornex-bar run         run a command (Win+R)
     skornex-bar desktop  start SkorneXDesktop, the Recycle Bin on the desktop.
                          It's a separate program, so if one crashes the other
@@ -240,7 +239,8 @@ class AppButton(Gtk.Button):
                 self.try_(nxt.set_minimized, False)
             self.try_(nxt.activate, None, 0)                # several windows: go to the next one
         else:
-            window = recent[-1]
+            minimized = [w for w in recent if w.is_minimized()]
+            window = (minimized or recent)[-1]     # bring back the one you minimized
             if window.is_minimized():
                 self.try_(window.set_minimized, False)
             self.try_(window.activate, None, 0)
@@ -274,7 +274,8 @@ class AppButton(Gtk.Button):
             item(text, lambda: [self.try_(w.close, 0) for w in list(self.windows)])
         menu.show_all()
         menu.attach_to_widget(self, None)
-        menu.popup_at_widget(self, Gdk.Gravity.NORTH_WEST, Gdk.Gravity.SOUTH_WEST, event)
+        menu.set_property("rect-anchor-dy", -8)      # a little gap above the bar, like the panels
+        menu.popup_at_widget(self, Gdk.Gravity.NORTH, Gdk.Gravity.SOUTH, event)
 
     # Drag to reorder; the button follows the mouse.
     def on_press(self, _w, event):
@@ -542,7 +543,6 @@ class Bar(Gtk.Window):
             "volume": Flyout(),
             "clock": Flyout(),
             "power": Flyout(),
-            "clipboard": Flyout(),
             "run": Flyout("left", keyboard=True),
         }
         for fly in self.flyouts.values():
@@ -974,86 +974,6 @@ class Bar(Gtk.Window):
             fly.box.pack_start(self.row_button(text, lambda c=cmd: (self.close_flyout(), spawn(*c))),
                                False, False, 0)
 
-    # Clipboard history (Win+V), like Windows. Click an entry to copy it again.
-    def fill_clipboard(self, fly):
-        fly.set_size_request(380, 460)
-        head = Gtk.Box(spacing=8)
-        head.pack_start(label("Clipboard", "title"), False, False, 0)
-        hint = label("Click to paste", "status")
-        head.pack_start(hint, False, False, 0)
-        clear = self.row_button("Clear all", lambda: (run("cliphist", "wipe"), self.close_flyout()))
-        head.pack_end(clear, False, False, 0)
-        fly.box.pack_start(head, False, False, 0)
-        entries = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        scroll = Gtk.ScrolledWindow()
-        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        scroll.set_vexpand(True)
-        scroll.add(entries)
-        fly.box.pack_start(scroll, True, True, 0)
-        lines = run("cliphist", "list").splitlines()[:50]
-        if not lines:
-            entries.pack_start(label("Nothing copied yet", "empty"), False, False, 12)
-        thumbs = 0
-        for line in lines:
-            _, _, preview = line.partition("\t")
-            button = Gtk.Button()
-            button.set_relief(Gtk.ReliefStyle.NONE)
-            button.get_style_context().add_class("row")
-            if preview.startswith("[[ binary data") and thumbs < 12:
-                thumbs += 1
-                image = Gtk.Image()
-                pixbuf = self.clip_thumbnail(line)
-                if pixbuf:
-                    image.set_from_pixbuf(pixbuf)
-                    image.set_halign(Gtk.Align.START)
-                    button.add(image)
-                else:
-                    button.add(Gtk.Label(label="Image", xalign=0))
-            else:
-                text = Gtk.Label(label=" ".join(preview.split())[:200] or " ", xalign=0)
-                text.set_ellipsize(Pango.EllipsizeMode.END)
-                text.set_lines(2)
-                text.set_line_wrap(True)
-                button.add(text)
-            button.connect("clicked", lambda _b, ln=line: self.paste_clip(ln))
-            entries.pack_start(button, False, False, 0)
-
-    @staticmethod
-    def clip_data(line):
-        try:
-            return subprocess.run(["cliphist", "decode"], input=line.encode(), capture_output=True,
-                                  timeout=5).stdout
-        except (OSError, subprocess.SubprocessError):
-            return b""
-
-    def clip_thumbnail(self, line):
-        data = self.clip_data(line)
-        try:
-            loader = GdkPixbuf.PixbufLoader()
-            loader.write(data)
-            loader.close()
-            pixbuf = loader.get_pixbuf()
-        except GLib.Error:
-            return None
-        if not pixbuf:
-            return None
-        width = min(320, pixbuf.get_width())
-        height = max(1, pixbuf.get_height() * width // pixbuf.get_width())
-        return pixbuf.scale_simple(width, min(height, 160), GdkPixbuf.InterpType.BILINEAR)
-
-    def paste_clip(self, line):
-        """Copy it, close the panel, then press Ctrl+V in the app you were in."""
-        self.copy_clip(line)
-        self.close_flyout()
-        GLib.timeout_add(200, lambda: spawn("wtype", "-M", "ctrl", "v", "-m", "ctrl") and False)
-
-    def copy_clip(self, line):
-        data = self.clip_data(line)
-        try:
-            subprocess.run(["wl-copy"], input=data, timeout=5)
-        except (OSError, subprocess.SubprocessError):
-            pass
-
     # Run (Win+R), like Windows: type a command, press Enter.
     def fill_run(self, fly):
         fly.set_size_request(420, -1)
@@ -1402,7 +1322,7 @@ class SkorneXBar(Gtk.Application):
             return 0
         if self.bar is None:
             self.bar = Bar(self)
-        if args and args[0] in ("search", "power", "clipboard", "run"):
+        if args and args[0] in ("search", "power", "run"):
             self.bar.toggle(args[0])
         return 0
 

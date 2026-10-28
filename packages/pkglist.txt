@@ -29,7 +29,6 @@ labwc
 kitty
 dunst
 libnotify
-wtype
 hyprlock
 swayidle
 polkit-gnome
@@ -43,9 +42,8 @@ gtk-layer-shell
 libxfce4windowing
 libdbusmenu-gtk3
 
-# --- Clipboard and screenshots ---
+# --- Screenshots ---
 wl-clipboard
-cliphist
 grim
 slurp
 
@@ -71,6 +69,7 @@ libpulse
 
 # --- Network ---
 networkmanager
+openssh
 
 # --- Fonts ---
 noto-fonts

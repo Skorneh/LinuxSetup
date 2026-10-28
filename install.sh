@@ -106,9 +106,11 @@ user = "greeter"
 EOF
 
 # --- 6b. Default apps ---
-# Notepad (Mousepad) opens scripts, notes and other text files.
+# Notepad (Mousepad) opens notes and other text files. Scripts (.sh) keep
+# their normal behavior; an earlier SkorneX version sent them to Notepad too.
 xdg-mime default org.xfce.mousepad.desktop text/plain text/markdown text/x-markdown \
-    application/x-shellscript text/x-shellscript application/json text/x-log
+    application/json text/x-log
+sed -i '/^\(application\|text\)\/x-shellscript=org.xfce.mousepad.desktop/d' "$HOME/.config/mimeapps.list" 2>/dev/null || true
 
 # --- 7. Firefox debloat ---
 # Turns off Pocket, sponsored content, telemetry, studies and the AI sidebar.
