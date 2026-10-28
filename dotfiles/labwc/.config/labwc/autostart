@@ -4,7 +4,6 @@
 # LOCK_ON_START, so your password is asked here instead of at a login screen.
 [ -n "$LOCK_ON_START" ] && hyprlock &
 
-swaybg -c "#$(. ~/.config/skornex/colors; echo "$BG")" >/dev/null 2>&1 &
 # SkorneXBar (taskbar) and SkorneXDesktop (Recycle Bin). If either ever
 # crashes it starts again a second later, and what went wrong is saved in
 # ~/.cache/skornex-bar.log or ~/.cache/skornex-desktop.log.

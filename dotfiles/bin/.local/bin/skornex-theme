@@ -25,7 +25,6 @@ if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
     labwc -r 2>/dev/null || true
     pkill -f '\.local/bin/skornex-bar( desktop)?$' || true   # autostart restarts them with the new colors
     pkill -x dunst && (dunst >/dev/null 2>&1 &)
-    pkill -x swaybg && (swaybg -c "#$BG" >/dev/null 2>&1 &)
     pkill -USR1 -x kitty || true
 fi
 echo "Colors applied."

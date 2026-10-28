@@ -4,3 +4,11 @@
 
 # Old taskbar, replaced by SkorneXBar. Also brings out its GPS tools (xgps).
 waybar
+
+# Replaced by SkorneX: clipboard, Run and Force Quit are SkorneXBar pop-ups,
+# and SkorneXDesktop paints the background.
+rofi
+swaybg
+# No longer used.
+jq
+man-db

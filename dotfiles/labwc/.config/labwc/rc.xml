@@ -57,7 +57,7 @@
       <action name="Execute" command="~/.local/bin/skornex-bar search" />
     </keybind>
     <keybind key="W-r">
-      <action name="Execute" command="rofi -show run" />
+      <action name="Execute" command="~/.local/bin/skornex-bar run" />
     </keybind>
     <keybind key="W-e">
       <action name="Execute" command="nemo" />
@@ -69,12 +69,12 @@
       <action name="Execute" command="hyprlock" />
     </keybind>
     <keybind key="W-v">
-      <action name="Execute" command="sh -c 'cliphist list | rofi -dmenu -p Clipboard | cliphist decode | wl-copy'" />
+      <action name="Execute" command="~/.local/bin/skornex-bar clipboard" />
     </keybind>
 
     <!-- SkorneX tools in ~/.local/bin. -->
     <keybind key="C-S-Escape">
-      <action name="Execute" command="~/.local/bin/skornex-forcequit" />
+      <action name="Execute" command="~/.local/bin/skornex-bar forcequit" />
     </keybind>
     <keybind key="C-A-Delete">
       <action name="Execute" command="~/.local/bin/skornex-bar power" />

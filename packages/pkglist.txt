@@ -5,10 +5,8 @@
 base-devel
 git
 stow
-man-db
 unzip
 pciutils
-jq
 fd
 xdg-utils
 gettext
@@ -18,11 +16,9 @@ greetd
 
 # --- Window manager and the pieces around it ---
 labwc
-rofi
 kitty
 dunst
 libnotify
-swaybg
 hyprlock
 swayidle
 polkit-gnome

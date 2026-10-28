@@ -4,6 +4,9 @@
     skornex-bar          start the taskbar (labwc's autostart does this)
     skornex-bar search   open or close the search (Windows key, Ctrl+Space)
     skornex-bar power    open or close the power menu (Ctrl+Alt+Delete)
+    skornex-bar clipboard   clipboard history (Win+V)
+    skornex-bar run         run a command (Win+R)
+    skornex-bar forcequit   Force Quit: close a frozen app (Ctrl+Shift+Esc)
     skornex-bar desktop  start SkorneXDesktop, the Recycle Bin on the desktop.
                          It's a separate program, so if one crashes the other
                          keeps going (autostart runs it as skornex-desktop).
@@ -535,6 +538,9 @@ class Bar(Gtk.Window):
             "volume": Flyout(),
             "clock": Flyout(),
             "power": Flyout(),
+            "clipboard": Flyout(),
+            "run": Flyout("left", keyboard=True),
+            "forcequit": Flyout(),
         }
         for fly in self.flyouts.values():
             fly.connect("key-press-event", self.on_flyout_key)
@@ -965,6 +971,170 @@ class Bar(Gtk.Window):
             fly.box.pack_start(self.row_button(text, lambda c=cmd: (self.close_flyout(), spawn(*c))),
                                False, False, 0)
 
+    # Clipboard history (Win+V), like Windows. Click an entry to copy it again.
+    def fill_clipboard(self, fly):
+        fly.set_size_request(380, 460)
+        head = Gtk.Box(spacing=8)
+        head.pack_start(label("Clipboard", "title"), False, False, 0)
+        clear = self.row_button("Clear all", lambda: (run("cliphist", "wipe"), self.close_flyout()))
+        head.pack_end(clear, False, False, 0)
+        fly.box.pack_start(head, False, False, 0)
+        entries = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_vexpand(True)
+        scroll.add(entries)
+        fly.box.pack_start(scroll, True, True, 0)
+        lines = run("cliphist", "list").splitlines()[:50]
+        if not lines:
+            entries.pack_start(label("Nothing copied yet", "empty"), False, False, 12)
+        thumbs = 0
+        for line in lines:
+            _, _, preview = line.partition("\t")
+            button = Gtk.Button()
+            button.set_relief(Gtk.ReliefStyle.NONE)
+            button.get_style_context().add_class("row")
+            if preview.startswith("[[ binary data") and thumbs < 12:
+                thumbs += 1
+                image = Gtk.Image()
+                pixbuf = self.clip_thumbnail(line)
+                if pixbuf:
+                    image.set_from_pixbuf(pixbuf)
+                    image.set_halign(Gtk.Align.START)
+                    button.add(image)
+                else:
+                    button.add(Gtk.Label(label="Image", xalign=0))
+            else:
+                text = Gtk.Label(label=" ".join(preview.split())[:200] or " ", xalign=0)
+                text.set_ellipsize(Pango.EllipsizeMode.END)
+                text.set_lines(2)
+                text.set_line_wrap(True)
+                button.add(text)
+            button.connect("clicked", lambda _b, ln=line: (self.copy_clip(ln), self.close_flyout()))
+            entries.pack_start(button, False, False, 0)
+
+    @staticmethod
+    def clip_data(line):
+        try:
+            return subprocess.run(["cliphist", "decode"], input=line.encode(), capture_output=True,
+                                  timeout=5).stdout
+        except (OSError, subprocess.SubprocessError):
+            return b""
+
+    def clip_thumbnail(self, line):
+        data = self.clip_data(line)
+        try:
+            loader = GdkPixbuf.PixbufLoader()
+            loader.write(data)
+            loader.close()
+            pixbuf = loader.get_pixbuf()
+        except GLib.Error:
+            return None
+        if not pixbuf:
+            return None
+        width = min(320, pixbuf.get_width())
+        height = max(1, pixbuf.get_height() * width // pixbuf.get_width())
+        return pixbuf.scale_simple(width, min(height, 160), GdkPixbuf.InterpType.BILINEAR)
+
+    def copy_clip(self, line):
+        data = self.clip_data(line)
+        try:
+            subprocess.run(["wl-copy"], input=data, timeout=5)
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+    # Run (Win+R), like Windows: type a command, press Enter.
+    def fill_run(self, fly):
+        fly.set_size_request(420, -1)
+        fly.box.pack_start(label("Run", "title"), False, False, 0)
+        hint = label("Type a program or command, like firefox or nemo ~/Downloads", "status")
+        hint.set_xalign(0)
+        fly.box.pack_start(hint, False, False, 0)
+        entry = Gtk.Entry()
+        entry.connect("activate", lambda e: e.get_text().strip()
+                      and (spawn("sh", "-c", e.get_text().strip()), self.close_flyout()))
+        fly.box.pack_start(entry, False, False, 0)
+        GLib.idle_add(entry.grab_focus)
+
+    # Force Quit (Ctrl+Shift+Esc), like the Mac: open apps and their memory.
+    FORCEQUIT_SKIP = {"labwc", "skornex-bar", "dunst", "swayidle", "hyprlock", "wl-paste",
+                      "polkit-gnome-au", "Xwayland", "xdg-desktop-por", "pipewire", "wireplumber",
+                      "sh", "bash", "dash"}
+
+    def gui_apps(self):
+        """Running apps: processes with a window connection whose parent has
+        none. Memory counts everything they started (Firefox tabs, games…)."""
+        page = os.sysconf("SC_PAGE_SIZE")
+        uid = os.getuid()
+        procs = {}
+        for entry in os.listdir("/proc"):
+            if not entry.isdigit():
+                continue
+            pid = int(entry)
+            try:
+                if os.stat(f"/proc/{pid}").st_uid != uid:
+                    continue
+                with open(f"/proc/{pid}/stat") as f:
+                    stat = f.read()
+                comm = stat[stat.index("(") + 1:stat.rindex(")")]
+                fields = stat[stat.rindex(")") + 2:].split()
+                with open(f"/proc/{pid}/environ", "rb") as f:
+                    gui = b"WAYLAND_DISPLAY=" in f.read()
+                procs[pid] = (int(fields[1]), int(fields[21]) * page, gui, comm)
+            except (OSError, ValueError, IndexError):
+                continue
+        total = dict.fromkeys(procs, 0)
+        for pid, (_, rss, _, _) in procs.items():
+            p = pid
+            while p in procs:
+                total[p] += rss
+                p = procs[p][0]
+        apps = []
+        for pid, (ppid, _, gui, comm) in procs.items():
+            if gui and not (ppid in procs and procs[ppid][2]) and comm not in self.FORCEQUIT_SKIP:
+                app_id = self.apps.find([comm])
+                name = self.apps.by_id[app_id].get_display_name() if app_id else comm
+                apps.append((total[pid], name, pid))
+        children = {}
+        for pid, (ppid, *_rest) in procs.items():
+            children.setdefault(ppid, []).append(pid)
+        return sorted(apps, reverse=True), children
+
+    def fill_forcequit(self, fly):
+        fly.set_size_request(340, -1)
+        fly.box.pack_start(label("Force Quit", "title"), False, False, 0)
+        apps, children = self.gui_apps()
+        if not apps:
+            fly.box.pack_start(label("No apps are open", "empty"), False, False, 8)
+
+        def kill_tree(pid):
+            for child in children.get(pid, []):
+                kill_tree(child)
+            try:
+                os.kill(pid, 9)
+            except OSError:
+                pass
+
+        for memory, name, pid in apps:
+            row = Gtk.Box(spacing=8)
+            text = Gtk.Label(label=name, xalign=0)
+            text.set_ellipsize(Pango.EllipsizeMode.END)
+            row.pack_start(text, True, True, 0)
+            row.pack_start(label(f"{memory // (1024 * 1024)} MB", "status"), False, False, 0)
+            button = Gtk.Button(label="End task")
+            button.get_style_context().add_class("row")
+
+            def confirm(b, n=name, p=pid):
+                if b.get_label() == "End task":
+                    b.set_label(f"Quit {n}?")     # click again to confirm
+                    b.get_style_context().add_class("danger")
+                else:
+                    kill_tree(p)
+                    self.close_flyout()
+            button.connect("clicked", confirm)
+            row.pack_start(button, False, False, 0)
+            fly.box.pack_start(row, False, False, 0)
+
 
 # --- SkorneXDesktop: desktop icons -----------------------------------------
 
@@ -1085,7 +1255,7 @@ class Desktop(Gtk.Window):
                    [GtkLayerShell.Edge.TOP, GtkLayerShell.Edge.BOTTOM,
                     GtkLayerShell.Edge.LEFT, GtkLayerShell.Edge.RIGHT],
                    namespace="skornex-desktop")
-        make_transparent(self)
+        # It also paints the background color (no separate background program).
         self.get_style_context().add_class("desktop")
         # Clicking empty desktop clears the selection.
         background = Gtk.EventBox()
@@ -1300,7 +1470,7 @@ class SkorneXBar(Gtk.Application):
             return 0
         if self.bar is None:
             self.bar = Bar(self)
-        if args and args[0] in ("search", "power"):
+        if args and args[0] in ("search", "power", "clipboard", "run", "forcequit"):
             self.bar.toggle(args[0])
         return 0
 

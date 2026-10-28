@@ -32,7 +32,6 @@ All scripts are safe to run more than once.
 | `skornex-bar` (**SkorneXBar**) | Starts with the desktop | The taskbar. See below. |
 | `skornex-desktop` (**SkorneXDesktop**) | Starts with the desktop | Desktop icons: the Recycle Bin plus everything in `~/Desktop`. Drag them anywhere (they snap to a grid and stay put), double-click to open, right-click for options. Add app shortcuts from the taskbar's right-click menu. |
 | `skornex-theme` | Run it in a terminal | Applies the colors file everywhere. |
-| `skornex-forcequit` | Ctrl+Shift+Esc | Lists open apps with memory use. Pick one, confirm, it's closed. |
 | `skornex-screenshot` | Print Screen keys | Region or full screen to the clipboard, or save to a file. |
 
 ### SkorneXBar
@@ -52,6 +51,8 @@ Works like the Windows taskbar:
 - **^**: hidden icons in a small pop-up. Apps that have a tray icon (Discord,
   Steam…) put it here while they're running, including after you close their
   window. Click one to open the app, right-click for its menu.
+- **Win+V** (clipboard history), **Win+R** (Run) and **Ctrl+Shift+Esc**
+  (Force Quit) open SkorneXBar pop-ups too.
 - **Network, volume, clock, power**: each opens a small panel in the
   bottom-right corner. Click the button again, click anywhere else, or press
   Esc to close it. Volume has a slider and the output list (speakers,
@@ -74,7 +75,7 @@ Change a value, then run:
 skornex-theme
 ```
 
-It rewrites SkorneXBar, the launcher menus, notifications, terminal, window
+It rewrites SkorneXBar, the desktop background, notifications, terminal, window
 borders and lock screen, and reloads what's running. App windows like Nemo use
 the dark `adw-gtk3-dark` theme.
 
@@ -123,11 +124,11 @@ installing them. After rebooting:
 | Keys | Action |
 |---|---|
 | Win, or Ctrl+Space | Search apps and files |
-| Win+R | Run a command |
+| Win+R | Run a command (SkorneXBar pop-up) |
 | Win+E | Files (Nemo) |
 | Ctrl+Alt+T | Terminal |
 | Win+L | Lock |
-| Win+V | Clipboard history (text and images) |
+| Win+V | Clipboard history, text and images (SkorneXBar pop-up) |
 | Win+D | Show desktop |
 | Win+Left / Win+Right | Snap to half the screen |
 | Win+Up / Win+Down | Maximize / minimize |
@@ -135,7 +136,7 @@ installing them. After rebooting:
 | Alt+Tab | Switch windows, with previews |
 | Alt+F4 | Close window |
 | Ctrl+Alt+Q | Force-quit the window you're in |
-| Ctrl+Shift+Esc | Force Quit list |
+| Ctrl+Shift+Esc | Force Quit: open apps with memory use, End task to close one (SkorneXBar pop-up) |
 | Ctrl+Alt+Delete | Power menu |
 | Print Screen, Win+Shift+S, Alt+Print Screen | Drag a box, copy to clipboard |
 | Shift+Print Screen | Whole screen, copy to clipboard |

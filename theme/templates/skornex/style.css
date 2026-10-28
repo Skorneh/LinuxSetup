@@ -53,7 +53,9 @@ menu menuitem:hover { background-color: #${SURFACE}; }
 menu separator { background-color: #${BORDER}; min-height: 1px; margin: 4px 0; }
 
 /* Desktop Recycle Bin */
-window.desktop, window.catcher { background-color: transparent; }
+window.desktop { background-color: #${BG}; }   /* the desktop background */
+window.catcher { background-color: transparent; }
+.flyout button.danger { color: #${URGENT}; }
 .desktop-icon { padding: 6px 4px; border-radius: 6px; }
 .desktop-icon:hover { background-color: alpha(#${SURFACE}, 0.8); }
 .desktop-label { color: #${TEXT}; text-shadow: 0 1px 2px black; }
