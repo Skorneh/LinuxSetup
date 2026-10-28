@@ -261,14 +261,14 @@ class AppButton(Gtk.Button):
             self.log_click(f"show '{(window.get_name() or '?')[:30]}'")
             if window.is_minimized():
                 self.try_(window.set_minimized, False)
-            self.try_(window.activate, None, 0)
+            self.try_(window.activate, self.bar.seat(), 0)
 
     @staticmethod
     def try_(fn, *args):
         try:
             fn(*args)
-        except GLib.Error:
-            pass
+        except (GLib.Error, TypeError, ValueError) as e:
+            print(f"skornex-bar: {getattr(fn, '__name__', fn)} failed: {e}", file=sys.stderr, flush=True)
 
     def menu(self, event):
         menu = Gtk.Menu()
@@ -599,6 +599,12 @@ class Bar(Gtk.Window):
 
     # Window changes are handled a moment later, never in the middle of the
     # window library's own update; a closed window is never touched again.
+    def seat(self):
+        """Your keyboard and mouse, which the window library needs to bring a
+        window to the front (it won't take "none")."""
+        seats = self.screen.get_seats()
+        return seats[0] if seats else None
+
     def watch_window(self, window):
         for sig in ("state-changed", "class-changed", "name-changed", "icon-changed"):
             window.connect(sig, lambda *_: self.schedule_sync())

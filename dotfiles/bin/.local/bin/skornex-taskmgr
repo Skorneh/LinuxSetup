@@ -312,9 +312,10 @@ class TaskManager(Gtk.ApplicationWindow):
             try:
                 if window.is_minimized():
                     window.set_minimized(False)
-                window.activate(None, 0)
-            except GLib.Error:
-                pass
+                seats = self.screen.get_seats()
+                window.activate(seats[0] if seats else None, 0)
+            except (GLib.Error, TypeError) as e:
+                print(f"skornex-taskmgr: switch failed: {e}", file=sys.stderr)
 
     def end_task(self):
         row = self.current()
