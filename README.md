@@ -64,8 +64,8 @@ Works like the Windows taskbar:
 - **Terminal:** kitty, shown as Terminal (Ctrl+Alt+T).
 - **Notepad:** Mousepad, shown as Notepad. Tabs, line numbers and syntax
   colors; opens `.sh`, `.md` and other text files when you double-click them.
-- **Paint:** Drawing, shown as Paint. Paste a screenshot with Ctrl+V to mark
-  it up, or right-click its icon > Edit Image in Clipboard.
+- **Paint:** Drawing, shown as Paint. Open it and press Ctrl+V to paste a
+  screenshot and mark it up.
 - **Firefox** (debloated), **Discord**.
 - **Xwayland** runs older X11 apps (Steam, Wine games) inside labwc.
 
