@@ -231,9 +231,20 @@ class AppButton(Gtk.Button):
         for cls, on in (("open", running), ("active", active), ("closed", not running)):
             (ctx.add_class if on else ctx.remove_class)(cls)
 
+    def log_click(self, action):
+        """One line per taskbar click in ~/.cache/skornex-bar.log, to track
+        down clicks that don't do the right thing."""
+        states = ", ".join(
+            f"'{(w.get_name() or '?')[:30]}'"
+            f"{' active' if w.is_active() else ''}{' minimized' if w.is_minimized() else ''}"
+            for w in self.windows)
+        print(f"{time.strftime('%H:%M:%S')} click {self.key}: [{states}] -> {action}",
+              file=sys.stderr, flush=True)
+
     # Clicking, like Windows.
     def click(self):
         if not self.windows:
+            self.log_click("launch")
             self.bar.apps.launch(self.key)
             return
         recent = sorted(self.windows, key=lambda w: self.bar.last_active.get(w, 0))
@@ -241,11 +252,13 @@ class AppButton(Gtk.Button):
         if active:
             # The app you're using: minimize it (all its windows, since some
             # apps, like Files, keep an extra hidden one).
+            self.log_click("minimize")
             for w in recent:
                 self.try_(w.set_minimized, True)
         else:
             minimized = [w for w in recent if w.is_minimized()]
             window = (minimized or recent)[-1]     # bring back the one you minimized
+            self.log_click(f"show '{(window.get_name() or '?')[:30]}'")
             if window.is_minimized():
                 self.try_(window.set_minimized, False)
             self.try_(window.activate, None, 0)
