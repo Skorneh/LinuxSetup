@@ -2,7 +2,12 @@
 
 # The PC boots straight to the lock screen: greetd logs you in and sets
 # LOCK_ON_START, so your password is asked here instead of at a login screen.
-[ -n "$LOCK_ON_START" ] && hyprlock &
+# The lock screen starts first, and everything else waits a moment so the
+# desktop doesn't flash on screen before it.
+if [ -n "$LOCK_ON_START" ]; then
+    hyprlock &
+    sleep 2
+fi
 
 # SkorneXBar (taskbar) and SkorneXDesktop (Recycle Bin). If either ever
 # crashes it starts again a second later, and what went wrong is saved in

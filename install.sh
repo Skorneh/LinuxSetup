@@ -7,6 +7,18 @@ set -euo pipefail
 source "$(dirname "$0")/scripts/lib.sh"
 require_arch_user
 
+# --- 0. Correct clock ---
+# Downloads fail ("certificate is not yet valid") if the clock is wrong, which
+# happens after rolling a VM back to a snapshot. Sync it first.
+info "Checking the clock..."
+sudo timedatectl set-ntp true
+for _ in $(seq 30); do
+    [[ "$(timedatectl show -p NTPSynchronized --value)" == yes ]] && break
+    sleep 1
+done
+[[ "$(timedatectl show -p NTPSynchronized --value)" == yes ]] \
+    || warn "Clock isn't synced yet; if downloads fail with a certificate error, wait a minute and run this again."
+
 # --- 1. Official packages ---
 info "Updating system and installing base packages..."
 mapfile -t pkgs < <(read_list "$REPO_DIR/packages/pkglist.txt")
