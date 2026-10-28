@@ -46,3 +46,7 @@ gsettings set org.gnome.desktop.interface cursor-theme Adwaita
 gsettings set org.xfce.mousepad.preferences.view show-line-numbers true
 gsettings set org.xfce.mousepad.preferences.view color-scheme oblivion
 gsettings set org.xfce.mousepad.preferences.view highlight-current-line true
+
+# Files (Nemo): double-clicking a script opens it in Notepad instead of running
+# it. Right-click > Open With still runs it when you mean to.
+gsettings set org.nemo.preferences executable-text-activation display

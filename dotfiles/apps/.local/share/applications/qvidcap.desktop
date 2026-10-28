@@ -1,0 +1,7 @@
+[Desktop Entry]
+# Hidden by SkorneX: a webcam test tool that ffmpeg brings along. It needs Qt,
+# which SkorneX does not install, so it would not open anyway.
+# Delete this file to show it again.
+Type=Application
+Name=Qt V4L2 video capture utility
+Hidden=true

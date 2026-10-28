@@ -8,7 +8,7 @@ source "$(dirname "$0")/lib.sh"
 
 tracked="$(cat "$REPO_DIR"/packages/*.txt | sed -e 's/#.*//' -e 's/[[:space:]]*$//' | grep -v '^$' | sort -u)"
 # Drivers and kernel headers are chosen by gaming.sh, so ignore them here.
-ignore='^(nvidia|lib32-nvidia|linux|mesa|lib32-mesa|vulkan-|lib32-vulkan-|paru)'
+ignore='^(nvidia|lib32-nvidia|linux|mesa|lib32-mesa|vulkan-|lib32-vulkan-|paru|qemu-guest-agent)'
 
 untracked() {
     comm -23 <(sort -u) <(echo "$tracked") | grep -Ev "$ignore" || true

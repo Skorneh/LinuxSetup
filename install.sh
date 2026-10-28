@@ -42,7 +42,7 @@ if ! paru --version >/dev/null 2>&1; then
     info "Installing paru (compiles from source, takes a few minutes)..."
     tmp="$(mktemp -d)"
     git clone --depth 1 https://aur.archlinux.org/paru.git "$tmp/paru"
-    (cd "$tmp/paru" && makepkg -si --noconfirm)
+    (cd "$tmp/paru" && makepkg -sir --noconfirm)   # -r: drop build-only tools (Rust) after
     rm -rf "$tmp"
 fi
 

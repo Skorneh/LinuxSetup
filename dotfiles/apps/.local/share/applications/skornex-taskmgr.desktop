@@ -1,0 +1,9 @@
+[Desktop Entry]
+# SkorneX Task Manager (skornex-taskmgr). Also opens with Ctrl+Shift+Esc.
+Type=Application
+Name=Task Manager
+Comment=See running apps and end the ones that are stuck
+Exec=skornex-taskmgr
+Icon=utilities-system-monitor
+Categories=System;Monitor;
+Keywords=task;manager;process;kill;force;quit;memory;cpu;

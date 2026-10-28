@@ -74,7 +74,7 @@
 
     <!-- SkorneX tools in ~/.local/bin. -->
     <keybind key="C-S-Escape">
-      <action name="Execute" command="~/.local/bin/skornex-bar forcequit" />
+      <action name="Execute" command="~/.local/bin/skornex-taskmgr" />
     </keybind>
     <keybind key="C-A-Delete">
       <action name="Execute" command="~/.local/bin/skornex-bar power" />

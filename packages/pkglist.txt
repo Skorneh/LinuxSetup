@@ -1,6 +1,16 @@
 # Base packages (official repos). One package per line.
 # Lines starting with # and blank lines are ignored.
 
+# --- From the Arch install (archinstall) ---
+base
+mkinitcpio
+sudo
+efibootmgr
+zram-generator
+wpa_supplicant
+gst-plugin-pipewire
+pipewire-jack
+
 # --- Build tools / repo tooling ---
 base-devel
 git
@@ -19,6 +29,7 @@ labwc
 kitty
 dunst
 libnotify
+wtype
 hyprlock
 swayidle
 polkit-gnome

@@ -6,7 +6,6 @@
     skornex-bar power    open or close the power menu (Ctrl+Alt+Delete)
     skornex-bar clipboard   clipboard history (Win+V)
     skornex-bar run         run a command (Win+R)
-    skornex-bar forcequit   Force Quit: close a frozen app (Ctrl+Shift+Esc)
     skornex-bar desktop  start SkorneXDesktop, the Recycle Bin on the desktop.
                          It's a separate program, so if one crashes the other
                          keeps going (autostart runs it as skornex-desktop).
@@ -237,9 +236,14 @@ class AppButton(Gtk.Button):
             self.try_(active[0].set_minimized, True)       # click the app you're using: minimize
         elif active:
             nxt = recent[(recent.index(active[0]) + 1) % len(recent)]
+            if nxt.is_minimized():
+                self.try_(nxt.set_minimized, False)
             self.try_(nxt.activate, None, 0)                # several windows: go to the next one
         else:
-            self.try_(recent[-1].activate, None, 0)
+            window = recent[-1]
+            if window.is_minimized():
+                self.try_(window.set_minimized, False)
+            self.try_(window.activate, None, 0)
 
     @staticmethod
     def try_(fn, *args):
@@ -270,7 +274,7 @@ class AppButton(Gtk.Button):
             item(text, lambda: [self.try_(w.close, 0) for w in list(self.windows)])
         menu.show_all()
         menu.attach_to_widget(self, None)
-        menu.popup_at_widget(self, Gdk.Gravity.NORTH, Gdk.Gravity.SOUTH, event)
+        menu.popup_at_widget(self, Gdk.Gravity.NORTH_WEST, Gdk.Gravity.SOUTH_WEST, event)
 
     # Drag to reorder; the button follows the mouse.
     def on_press(self, _w, event):
@@ -540,7 +544,6 @@ class Bar(Gtk.Window):
             "power": Flyout(),
             "clipboard": Flyout(),
             "run": Flyout("left", keyboard=True),
-            "forcequit": Flyout(),
         }
         for fly in self.flyouts.values():
             fly.connect("key-press-event", self.on_flyout_key)
@@ -966,8 +969,8 @@ class Bar(Gtk.Window):
 
     def fill_power(self, fly):
         fly.set_size_request(220, -1)
-        for text, cmd in (("Lock", ["hyprlock"]), ("Log out", ["labwc", "--exit"]),
-                          ("Restart", ["systemctl", "reboot"]), ("Shut down", ["systemctl", "poweroff"])):
+        for text, cmd in (("Lock", ["hyprlock"]), ("Restart", ["systemctl", "reboot"]),
+                          ("Shut down", ["systemctl", "poweroff"])):
             fly.box.pack_start(self.row_button(text, lambda c=cmd: (self.close_flyout(), spawn(*c))),
                                False, False, 0)
 
@@ -976,6 +979,8 @@ class Bar(Gtk.Window):
         fly.set_size_request(380, 460)
         head = Gtk.Box(spacing=8)
         head.pack_start(label("Clipboard", "title"), False, False, 0)
+        hint = label("Click to paste", "status")
+        head.pack_start(hint, False, False, 0)
         clear = self.row_button("Clear all", lambda: (run("cliphist", "wipe"), self.close_flyout()))
         head.pack_end(clear, False, False, 0)
         fly.box.pack_start(head, False, False, 0)
@@ -1010,7 +1015,7 @@ class Bar(Gtk.Window):
                 text.set_lines(2)
                 text.set_line_wrap(True)
                 button.add(text)
-            button.connect("clicked", lambda _b, ln=line: (self.copy_clip(ln), self.close_flyout()))
+            button.connect("clicked", lambda _b, ln=line: self.paste_clip(ln))
             entries.pack_start(button, False, False, 0)
 
     @staticmethod
@@ -1036,6 +1041,12 @@ class Bar(Gtk.Window):
         height = max(1, pixbuf.get_height() * width // pixbuf.get_width())
         return pixbuf.scale_simple(width, min(height, 160), GdkPixbuf.InterpType.BILINEAR)
 
+    def paste_clip(self, line):
+        """Copy it, close the panel, then press Ctrl+V in the app you were in."""
+        self.copy_clip(line)
+        self.close_flyout()
+        GLib.timeout_add(200, lambda: spawn("wtype", "-M", "ctrl", "v", "-m", "ctrl") and False)
+
     def copy_clip(self, line):
         data = self.clip_data(line)
         try:
@@ -1055,85 +1066,6 @@ class Bar(Gtk.Window):
                       and (spawn("sh", "-c", e.get_text().strip()), self.close_flyout()))
         fly.box.pack_start(entry, False, False, 0)
         GLib.idle_add(entry.grab_focus)
-
-    # Force Quit (Ctrl+Shift+Esc), like the Mac: open apps and their memory.
-    FORCEQUIT_SKIP = {"labwc", "skornex-bar", "dunst", "swayidle", "hyprlock", "wl-paste",
-                      "polkit-gnome-au", "Xwayland", "xdg-desktop-por", "pipewire", "wireplumber",
-                      "sh", "bash", "dash"}
-
-    def gui_apps(self):
-        """Running apps: processes with a window connection whose parent has
-        none. Memory counts everything they started (Firefox tabs, games…)."""
-        page = os.sysconf("SC_PAGE_SIZE")
-        uid = os.getuid()
-        procs = {}
-        for entry in os.listdir("/proc"):
-            if not entry.isdigit():
-                continue
-            pid = int(entry)
-            try:
-                if os.stat(f"/proc/{pid}").st_uid != uid:
-                    continue
-                with open(f"/proc/{pid}/stat") as f:
-                    stat = f.read()
-                comm = stat[stat.index("(") + 1:stat.rindex(")")]
-                fields = stat[stat.rindex(")") + 2:].split()
-                with open(f"/proc/{pid}/environ", "rb") as f:
-                    gui = b"WAYLAND_DISPLAY=" in f.read()
-                procs[pid] = (int(fields[1]), int(fields[21]) * page, gui, comm)
-            except (OSError, ValueError, IndexError):
-                continue
-        total = dict.fromkeys(procs, 0)
-        for pid, (_, rss, _, _) in procs.items():
-            p = pid
-            while p in procs:
-                total[p] += rss
-                p = procs[p][0]
-        apps = []
-        for pid, (ppid, _, gui, comm) in procs.items():
-            if gui and not (ppid in procs and procs[ppid][2]) and comm not in self.FORCEQUIT_SKIP:
-                app_id = self.apps.find([comm])
-                name = self.apps.by_id[app_id].get_display_name() if app_id else comm
-                apps.append((total[pid], name, pid))
-        children = {}
-        for pid, (ppid, *_rest) in procs.items():
-            children.setdefault(ppid, []).append(pid)
-        return sorted(apps, reverse=True), children
-
-    def fill_forcequit(self, fly):
-        fly.set_size_request(340, -1)
-        fly.box.pack_start(label("Force Quit", "title"), False, False, 0)
-        apps, children = self.gui_apps()
-        if not apps:
-            fly.box.pack_start(label("No apps are open", "empty"), False, False, 8)
-
-        def kill_tree(pid):
-            for child in children.get(pid, []):
-                kill_tree(child)
-            try:
-                os.kill(pid, 9)
-            except OSError:
-                pass
-
-        for memory, name, pid in apps:
-            row = Gtk.Box(spacing=8)
-            text = Gtk.Label(label=name, xalign=0)
-            text.set_ellipsize(Pango.EllipsizeMode.END)
-            row.pack_start(text, True, True, 0)
-            row.pack_start(label(f"{memory // (1024 * 1024)} MB", "status"), False, False, 0)
-            button = Gtk.Button(label="End task")
-            button.get_style_context().add_class("row")
-
-            def confirm(b, n=name, p=pid):
-                if b.get_label() == "End task":
-                    b.set_label(f"Quit {n}?")     # click again to confirm
-                    b.get_style_context().add_class("danger")
-                else:
-                    kill_tree(p)
-                    self.close_flyout()
-            button.connect("clicked", confirm)
-            row.pack_start(button, False, False, 0)
-            fly.box.pack_start(row, False, False, 0)
 
 
 # --- SkorneXDesktop: desktop icons -----------------------------------------
@@ -1470,7 +1402,7 @@ class SkorneXBar(Gtk.Application):
             return 0
         if self.bar is None:
             self.bar = Bar(self)
-        if args and args[0] in ("search", "power", "clipboard", "run", "forcequit"):
+        if args and args[0] in ("search", "power", "clipboard", "run"):
             self.bar.toggle(args[0])
         return 0
 

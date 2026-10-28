@@ -12,3 +12,5 @@ swaybg
 # No longer used.
 jq
 man-db
+# Only needed to build paru; paru now removes build-only tools after building.
+rust

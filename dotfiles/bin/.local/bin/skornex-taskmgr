@@ -1,0 +1,374 @@
+#!/usr/bin/env python3
+"""SkorneX Task Manager: see what's running and end what's stuck.
+
+    skornex-taskmgr      open it (Ctrl+Shift+Esc, or search "Task Manager")
+
+Like Windows Task Manager:
+  - Apps: everything with an open window, with its CPU and memory use.
+  - Background processes: everything else running as you.
+  - Select a row and press End task (or Delete), or right-click it.
+    End task asks the app to close, and forces it two seconds later if it
+    hasn't. Everything the app started (Firefox tabs, a game…) goes with it.
+"""
+
+import faulthandler
+import os
+import signal
+import sys
+
+import gi
+
+faulthandler.enable()
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+gi.require_version("Libxfce4windowing", "0.0")
+from gi.repository import Gdk, Gio, GLib, Gtk, Pango  # noqa: E402
+from gi.repository import Libxfce4windowing as Xfw  # noqa: E402
+
+REFRESH_SECONDS = 2
+PAGE = os.sysconf("SC_PAGE_SIZE")
+TICKS = os.sysconf("SC_CLK_TCK")
+CPUS = os.cpu_count() or 1
+
+# Tree columns
+COL_ICON, COL_NAME, COL_CPU, COL_MEM, COL_PID, COL_KEY, COL_CPU_SORT, COL_MEM_SORT = range(8)
+
+
+# --- Reading processes ------------------------------------------------------
+
+def read_processes():
+    """{pid: dict(ppid, comm, cmd, rss, ticks, desktop)} for your own processes."""
+    uid = os.getuid()
+    procs = {}
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        pid = int(entry)
+        try:
+            if os.stat(f"/proc/{pid}").st_uid != uid:
+                continue
+            with open(f"/proc/{pid}/stat") as f:
+                stat = f.read()
+            comm = stat[stat.index("(") + 1:stat.rindex(")")]
+            fields = stat[stat.rindex(")") + 2:].split()
+            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                cmd = f.read().split(b"\0")
+            desktop = None
+            with open(f"/proc/{pid}/environ", "rb") as f:
+                for var in f.read().split(b"\0"):
+                    if var.startswith(b"GIO_LAUNCHED_DESKTOP_FILE="):
+                        desktop = os.path.basename(var.split(b"=", 1)[1].decode(errors="replace"))
+            procs[pid] = {
+                "ppid": int(fields[1]),
+                "comm": comm,
+                "exe": os.path.basename(cmd[0].decode(errors="replace")) if cmd and cmd[0] else comm,
+                "rss": int(fields[21]) * PAGE,
+                "ticks": int(fields[11]) + int(fields[12]),   # user + system CPU time
+                "desktop": desktop,
+            }
+        except (OSError, ValueError, IndexError):
+            continue
+    return procs
+
+
+def descendants(procs, pid):
+    children = {}
+    for p, info in procs.items():
+        children.setdefault(info["ppid"], []).append(p)
+    out, todo = [], [pid]
+    while todo:
+        p = todo.pop()
+        out.append(p)
+        todo.extend(children.get(p, []))
+    return out
+
+
+def human(nbytes):
+    mb = nbytes / (1024 * 1024)
+    return f"{mb / 1024:.1f} GB" if mb >= 1024 else f"{mb:.0f} MB"
+
+
+# --- The window -------------------------------------------------------------
+
+class TaskManager(Gtk.ApplicationWindow):
+    def __init__(self, app):
+        super().__init__(application=app, title="Task Manager")
+        self.set_default_size(680, 560)
+        self.set_icon_name("utilities-system-monitor")
+
+        self.apps = {}
+        for info in Gio.AppInfo.get_all():
+            if isinstance(info, Gio.DesktopAppInfo):
+                self.apps[info.get_id()] = info
+        self.screen = Xfw.Screen.get_default()
+        self.last_ticks = {}
+        self.last_time = None
+        self.selected_key = None
+        self.row_refs = {}       # key -> row in the list, updated in place
+        self.rows = {}
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.add(box)
+
+        # Name, CPU, Memory, sortable by clicking the headers.
+        self.store = Gtk.TreeStore(Gio.Icon, str, str, str, int, str, float, float)
+        self.view = Gtk.TreeView(model=self.store)
+        self.view.set_enable_search(True)
+        self.view.set_search_column(COL_NAME)
+
+        name_col = Gtk.TreeViewColumn("Name")
+        icon = Gtk.CellRendererPixbuf()
+        icon.set_property("stock-size", Gtk.IconSize.LARGE_TOOLBAR)
+        name_col.pack_start(icon, False)
+        name_col.add_attribute(icon, "gicon", COL_ICON)
+        text = Gtk.CellRendererText()
+        text.set_property("ellipsize", Pango.EllipsizeMode.END)
+        name_col.pack_start(text, True)
+        name_col.add_attribute(text, "text", COL_NAME)
+        name_col.set_expand(True)
+        name_col.set_sort_column_id(COL_NAME)
+        self.view.append_column(name_col)
+        for title, col, sort in (("CPU", COL_CPU, COL_CPU_SORT), ("Memory", COL_MEM, COL_MEM_SORT)):
+            cell = Gtk.CellRendererText(xalign=1.0)
+            column = Gtk.TreeViewColumn(title, cell, text=col)
+            column.set_sort_column_id(sort)
+            column.set_min_width(90)
+            column.set_alignment(1.0)
+            self.view.append_column(column)
+        self.store.set_sort_column_id(COL_MEM_SORT, Gtk.SortType.DESCENDING)
+
+        self.view.connect("button-press-event", self.on_click)
+        self.view.connect("row-activated", lambda *_: self.switch_to())
+        self.view.connect("key-press-event", self.on_key)
+        self.view.get_selection().connect("changed", self.on_selection)
+
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_vexpand(True)
+        scroll.add(self.view)
+        box.pack_start(scroll, True, True, 0)
+
+        bottom = Gtk.Box(spacing=8)
+        bottom.set_border_width(8)
+        self.summary = Gtk.Label(xalign=0)
+        bottom.pack_start(self.summary, True, True, 0)
+        self.end_button = Gtk.Button(label="End task")
+        self.end_button.set_sensitive(False)
+        self.end_button.connect("clicked", lambda *_: self.end_task())
+        bottom.pack_end(self.end_button, False, False, 0)
+        box.pack_start(bottom, False, False, 0)
+
+        self.refresh()
+        GLib.timeout_add_seconds(REFRESH_SECONDS, self.refresh)
+        self.show_all()
+
+    # --- Matching windows to processes ---
+
+    def app_for_window(self, window):
+        names = list(window.get_class_ids() or [])
+        application = window.get_application()
+        if application:
+            names.append(application.get_class_id())
+        lower = {k.lower(): k for k in self.apps}
+        for name in names:
+            if not name:
+                continue
+            for candidate in (name, name.lower()):
+                key = candidate + ".desktop"
+                if key in self.apps:
+                    return key
+                if key.lower() in lower:
+                    return lower[key.lower()]
+            for key, info in self.apps.items():
+                wm = info.get_startup_wm_class()
+                if wm and wm.lower() == name.lower():
+                    return key
+        return None
+
+    @staticmethod
+    def exe_name(info):
+        exe = (info.get_commandline() or "").split()
+        return os.path.basename(exe[0]) if exe else ""
+
+    def gather(self):
+        """[(key, name, gicon, pids, kind)]: apps with windows, then background."""
+        procs = read_processes()
+        windows = [w for w in self.screen.get_windows() if not w.is_skip_tasklist()]
+        groups = {}
+        for w in windows:
+            key = self.app_for_window(w)
+            groups.setdefault(key or "window:" + (w.get_name() or "?"), []).append(w)
+
+        claimed = set()
+        rows = []
+        for key, wins in groups.items():
+            info = self.apps.get(key)
+            names = {n.lower() for w in wins for n in (w.get_class_ids() or []) if n}
+            if info:
+                names.add(self.exe_name(info).lower())
+                names.add(key[:-len(".desktop")].lower())
+            # The app's processes: launched from its .desktop file, or named like it.
+            mine = {p for p, i in procs.items()
+                    if (i["desktop"] and i["desktop"] == key)
+                    or i["comm"].lower() in names or i["exe"].lower() in names}
+            roots = [p for p in mine if procs[p]["ppid"] not in mine]
+            pids = set()
+            for root in roots:
+                pids.update(descendants(procs, root))
+            pids -= claimed
+            claimed |= pids
+            name = info.get_display_name() if info else (wins[0].get_name() or key)
+            gicon = info.get_icon() if info else Gio.ThemedIcon.new("application-x-executable")
+            rows.append((key, name, gicon, sorted(pids), "app", wins))
+
+        # Background: what's left, grouped by top-level process.
+        rest = {p: i for p, i in procs.items() if p not in claimed and p != os.getpid()}
+        for pid, info in rest.items():
+            if info["ppid"] in rest:
+                continue
+            pids = [p for p in descendants(procs, pid) if p in rest]
+            rows.append((f"pid:{pid}", info["comm"], Gio.ThemedIcon.new("application-x-executable"),
+                         pids, "background", []))
+        return procs, rows
+
+    # --- Updating the list ---
+
+    def refresh(self):
+        procs, rows = self.gather()
+        now = GLib.get_monotonic_time() / 1e6
+        elapsed = (now - self.last_time) if self.last_time else None
+        self.last_time = now
+
+        def cpu(pids):
+            if not elapsed:
+                return 0.0
+            used = sum(procs[p]["ticks"] - self.last_ticks.get(p, procs[p]["ticks"]) for p in pids if p in procs)
+            return max(0.0, used / TICKS / elapsed / CPUS * 100)
+
+        self.rows = {r[0]: r for r in rows}
+        # Rows are updated in place (not rebuilt), so scrolling and the
+        # selection stay put while the numbers change.
+        if not hasattr(self, "parents"):
+            self.parents = {}
+            for kind, rank in (("app", 2e18), ("background", 1e18)):
+                it = self.store.append(None, [None, "", "", "", 0, "", rank, rank])
+                self.parents[kind] = Gtk.TreeRowReference.new(self.store, self.store.get_path(it))
+        for key in list(self.row_refs):
+            if key not in self.rows or not self.row_refs[key].valid():
+                ref = self.row_refs.pop(key)
+                if ref.valid():
+                    self.store.remove(self.store.get_iter(ref.get_path()))
+        total_mem = 0
+        for key, name, gicon, pids, kind, _ in rows:
+            mem = sum(procs[p]["rss"] for p in pids if p in procs)
+            total_mem += mem
+            usage = cpu(pids)
+            values = [gicon, name, f"{usage:.1f}%", human(mem), pids[0] if pids else 0, key, usage, float(mem)]
+            ref = self.row_refs.get(key)
+            if ref and ref.valid():
+                self.store.set(self.store.get_iter(ref.get_path()), list(range(8)), values)
+            else:
+                parent = self.store.get_iter(self.parents[kind].get_path())
+                it = self.store.append(parent, values)
+                self.row_refs[key] = Gtk.TreeRowReference.new(self.store, self.store.get_path(it))
+                self.view.expand_row(self.store.get_path(parent), False)
+        for kind, title in (("app", "Apps"), ("background", "Background processes")):
+            count = sum(1 for r in rows if r[4] == kind)
+            self.store.set_value(self.store.get_iter(self.parents[kind].get_path()), COL_NAME, f"{title} ({count})")
+        self.last_ticks = {p: i["ticks"] for p, i in procs.items()}
+        apps = sum(1 for r in rows if r[4] == "app")
+        self.summary.set_text(f"{apps} apps · {human(total_mem)} used by your programs")
+        return True
+
+    def on_selection(self, selection):
+        model, it = selection.get_selected()
+        key = model[it][COL_KEY] if it else ""
+        self.selected_key = key or None     # a section header isn't a task
+        self.end_button.set_sensitive(bool(key))
+
+    # --- Actions ---
+
+    def current(self):
+        return self.rows.get(self.selected_key)
+
+    def switch_to(self):
+        row = self.current()
+        if row and row[5]:
+            window = row[5][0]
+            try:
+                if window.is_minimized():
+                    window.set_minimized(False)
+                window.activate(None, 0)
+            except GLib.Error:
+                pass
+
+    def end_task(self):
+        row = self.current()
+        if not row:
+            return
+        pids = list(reversed(row[3]))   # children first
+        for pid in pids:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                pass
+
+        def force():
+            for pid in pids:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except OSError:
+                    pass
+            self.refresh()
+            return False
+        GLib.timeout_add_seconds(2, force)
+        self.selected_key = None
+        self.refresh()
+
+    def on_click(self, view, event):
+        if event.button != 3:
+            return False
+        hit = view.get_path_at_pos(int(event.x), int(event.y))
+        if not hit:
+            return False
+        view.get_selection().select_path(hit[0])
+        row = self.current()
+        if not row:
+            return True
+        menu = Gtk.Menu()
+        items = [("End task", self.end_task)]
+        if row[5]:
+            items.insert(0, ("Switch to", self.switch_to))
+        for text, callback in items:
+            item = Gtk.MenuItem(label=text)
+            item.connect("activate", lambda _i, c=callback: GLib.timeout_add(100, lambda: c() and False))
+            menu.append(item)
+        menu.show_all()
+        menu.attach_to_widget(view, None)
+        menu.popup_at_pointer(event)
+        return True
+
+    def on_key(self, _w, event):
+        if event.keyval == Gdk.KEY_Delete:
+            self.end_task()
+            return True
+        if event.keyval == Gdk.KEY_Escape:
+            self.close()
+            return True
+        return False
+
+
+class App(Gtk.Application):
+    def __init__(self):
+        super().__init__(application_id="dev.skornex.TaskManager")
+        self.window = None
+
+    def do_activate(self):
+        Gtk.Settings.get_default().props.gtk_application_prefer_dark_theme = True
+        if self.window is None:
+            self.window = TaskManager(self)
+        self.window.present()
+
+
+if __name__ == "__main__":
+    sys.exit(App().run(sys.argv))

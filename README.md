@@ -14,7 +14,7 @@ tool I own.
 | `install.sh` | Installs everything, links the configs, applies the colors, sets up booting straight to the lock screen, debloats Firefox. Adds the guest agent in a Proxmox VM. |
 | `gaming.sh` | Real PC only: enables `[multilib]`, detects your GPU and installs drivers, then Steam, Lutris, GameMode, MangoHud. |
 | `packages/` | Package lists: `pkglist.txt` (official repos), `aurlist.txt` (AUR), `gaming.txt`, and `removelist.txt` (old packages to remove). |
-| `dotfiles/apps/` | App list tweaks: kitty shown as Terminal, Mousepad as Notepad. |
+| `dotfiles/apps/` | App list tweaks: kitty shown as Terminal, Mousepad as Notepad, Task Manager added, and two broken webcam test tools (from ffmpeg) hidden. |
 | `dotfiles/` | Config files, linked into `~` with GNU Stow. Each folder mirrors your home folder. |
 | `dotfiles/skornex/.config/skornex/colors` | **The one file with all the colors.** |
 | `dotfiles/skornex/.config/skornex/pins` | Apps pinned to the taskbar. |
@@ -31,6 +31,7 @@ All scripts are safe to run more than once.
 |---|---|---|
 | `skornex-bar` (**SkorneXBar**) | Starts with the desktop | The taskbar. See below. |
 | `skornex-desktop` (**SkorneXDesktop**) | Starts with the desktop | Desktop icons: the Recycle Bin plus everything in `~/Desktop`. Drag them anywhere (they snap to a grid and stay put), double-click to open, right-click for options. Add app shortcuts from the taskbar's right-click menu. |
+| `skornex-taskmgr` (**Task Manager**) | Ctrl+Shift+Esc, or search "Task Manager" | Apps and background processes with CPU and memory. Select one and press End task (or right-click it). |
 | `skornex-theme` | Run it in a terminal | Applies the colors file everywhere. |
 | `skornex-screenshot` | Print Screen keys | Region or full screen to the clipboard, or save to a file. |
 
@@ -51,8 +52,8 @@ Works like the Windows taskbar:
 - **^**: hidden icons in a small pop-up. Apps that have a tray icon (Discord,
   Steam…) put it here while they're running, including after you close their
   window. Click one to open the app, right-click for its menu.
-- **Win+V** (clipboard history), **Win+R** (Run) and **Ctrl+Shift+Esc**
-  (Force Quit) open SkorneXBar pop-ups too.
+- **Win+V** (clipboard history: click an entry to paste it) and **Win+R**
+  (Run) open SkorneXBar pop-ups too.
 - **Network, volume, clock, power**: each opens a small panel in the
   bottom-right corner. Click the button again, click anywhere else, or press
   Esc to close it. Volume has a slider and the output list (speakers,
@@ -136,7 +137,7 @@ installing them. After rebooting:
 | Alt+Tab | Switch windows, with previews |
 | Alt+F4 | Close window |
 | Ctrl+Alt+Q | Force-quit the window you're in |
-| Ctrl+Shift+Esc | Force Quit: open apps with memory use, End task to close one (SkorneXBar pop-up) |
+| Ctrl+Shift+Esc | Task Manager |
 | Ctrl+Alt+Delete | Power menu |
 | Print Screen, Win+Shift+S, Alt+Print Screen | Drag a box, copy to clipboard |
 | Shift+Print Screen | Whole screen, copy to clipboard |
