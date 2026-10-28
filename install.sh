@@ -77,6 +77,11 @@ command = "agreety --cmd labwc"
 user = "greeter"
 EOF
 
+# --- 6b. Default apps ---
+# Notepad (Mousepad) opens scripts, notes and other text files.
+xdg-mime default org.xfce.mousepad.desktop text/plain text/markdown text/x-markdown \
+    application/x-shellscript text/x-shellscript application/json text/x-log
+
 # --- 7. Firefox debloat ---
 # Turns off Pocket, sponsored content, telemetry, studies and the AI sidebar.
 # Every setting stays changeable in Firefox. Check it at about:policies.

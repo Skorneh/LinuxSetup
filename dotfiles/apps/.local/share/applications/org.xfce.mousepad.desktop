@@ -1,0 +1,15 @@
+[Desktop Entry]
+# Mousepad, shown as "Notepad". Same name as Mousepad's own entry, so this
+# one takes its place. Opens .sh, .md and other text files by default.
+Version=1.0
+Type=Application
+Name=Notepad
+GenericName=Text Editor
+Comment=Edit text files
+Exec=mousepad %U
+Icon=org.xfce.mousepad
+Terminal=false
+StartupNotify=true
+Categories=Utility;TextEditor;GTK;
+MimeType=text/plain;text/markdown;text/x-markdown;application/x-shellscript;text/x-shellscript;application/json;application/xml;text/x-python;text/x-csrc;text/x-log;
+Keywords=notepad;text;editor;mousepad;

@@ -29,7 +29,7 @@ All scripts are safe to run more than once.
 | Tool | Opens with | Does |
 |---|---|---|
 | `skornex-bar` (**SkorneXBar**) | Starts with the desktop | The taskbar. See below. |
-| `skornex-desktop` (**SkorneXDesktop**) | Starts with the desktop | The Recycle Bin on the desktop: double-click to open, right-click to empty. |
+| `skornex-desktop` (**SkorneXDesktop**) | Starts with the desktop | Desktop icons: the Recycle Bin plus everything in `~/Desktop`. Double-click to open, right-click for options. Add app shortcuts from the taskbar's right-click menu. |
 | `skornex-theme` | Run it in a terminal | Applies the colors file everywhere. |
 | `skornex-forcequit` | Ctrl+Shift+Esc | Lists open apps with memory use. Pick one, confirm, it's closed. |
 | `skornex-screenshot` | Print Screen keys | Region or full screen to the clipboard, or save to a file. |
@@ -41,13 +41,13 @@ Works like the Windows taskbar:
 - **Search box** (far left), or the **Windows key** or **Ctrl+Space**: type to
   find apps and files in your home folder. Shows "No results" when nothing
   matches. With nothing typed, it lists all apps.
-- **App buttons** start on the left: pinned apps first (Files is pinned by
-  default), then other open apps. Three looks: pinned but closed (plain), open
+- **App buttons** start on the left: pinned and open apps in one row (Files is
+  pinned by default). Three looks: pinned but closed (plain), open
   (line under it), the app you're using (highlighted, brighter line).
   - Click: open it, switch to it, or minimize it if you're already using it.
-  - Right-click: **Pin to taskbar** / **Unpin from taskbar**, new window,
-    close.
-  - Drag a button left or right to reorder. Pinned order is saved.
+  - Right-click: **Pin to taskbar** / **Unpin from taskbar**, **Add to
+    desktop**, new window, close.
+  - Drag any button left or right, pinned or not. Pinned order is saved.
 - **^**: hidden icons in a small pop-up. Apps that have a tray icon (Discord,
   Steam…) put it here while they're running, including after you close their
   window. Click one to open the app, right-click for its menu.
@@ -55,6 +55,14 @@ Works like the Windows taskbar:
   bottom-right corner. Click the button again, click anywhere else, or press
   Esc to close it. Volume has a slider and the output list (speakers,
   headset…); scrolling on the volume changes it.
+
+## Apps
+
+- **Files:** Nemo (Win+E).
+- **Terminal:** kitty, shown as Terminal (Ctrl+Alt+T).
+- **Notepad:** Mousepad, shown as Notepad. Tabs, line numbers and syntax
+  colors; opens `.sh`, `.md` and other text files when you double-click them.
+- **Firefox** (debloated), **Discord**.
 
 ## Colors
 

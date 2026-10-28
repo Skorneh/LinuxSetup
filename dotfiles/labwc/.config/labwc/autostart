@@ -37,3 +37,8 @@ gsettings set org.gnome.desktop.interface color-scheme prefer-dark
 gsettings set org.gnome.desktop.interface gtk-theme adw-gtk3-dark
 gsettings set org.gnome.desktop.interface icon-theme Papirus-Dark
 gsettings set org.gnome.desktop.interface cursor-theme Adwaita
+
+# Notepad (Mousepad): line numbers and a dark color scheme.
+gsettings set org.xfce.mousepad.preferences.view show-line-numbers true
+gsettings set org.xfce.mousepad.preferences.view color-scheme oblivion
+gsettings set org.xfce.mousepad.preferences.view highlight-current-line true

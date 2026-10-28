@@ -51,6 +51,7 @@ dconf
 # --- Apps ---
 nemo
 gvfs
+mousepad
 firefox
 discord
 

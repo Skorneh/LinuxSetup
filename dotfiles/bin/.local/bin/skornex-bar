@@ -260,6 +260,7 @@ class AppButton(Gtk.Button):
                 item("Unpin from taskbar", lambda: self.bar.unpin(self.key))
             else:
                 item("Pin to taskbar", lambda: self.bar.pin(self.key))
+            item("Add to desktop", lambda: add_to_desktop(self.info))
         if self.windows:
             menu.append(Gtk.SeparatorMenuItem())
             text = "Close window" if len(self.windows) == 1 else "Close all windows"
@@ -491,7 +492,7 @@ class Bar(Gtk.Window):
 
         self.apps = Apps()
         self.pins = read_pins()
-        self.order = []          # open, unpinned apps in the order they appeared
+        self.order = list(self.pins)   # every taskbar button, left to right
         self.buttons = {}
         self.last_active = {}
         self.open_flyout = None
@@ -608,11 +609,12 @@ class Bar(Gtk.Window):
             if w in self.closed or w.is_skip_tasklist():
                 continue
             groups.setdefault(self.group_key(w), []).append(w)
-        for key in groups:
-            if key not in self.pins and key not in self.order:
+        # One row for pinned and open apps, in whatever order you dragged them.
+        for key in self.pins + list(groups):
+            if key not in self.order:
                 self.order.append(key)
-        self.order = [k for k in self.order if k in groups and k not in self.pins]
-        wanted = [p for p in self.pins if p in self.apps.by_id] + self.order
+        self.order = [k for k in self.order if k in groups or (k in self.pins and k in self.apps.by_id)]
+        wanted = self.order
 
         for key in list(self.buttons):
             if key not in wanted:
@@ -645,11 +647,10 @@ class Bar(Gtk.Window):
         self.sync()
 
     def reordered(self):
-        keys = [b.key for b in self.taskbar.get_children()]
-        new_pins = [k for k in keys if k in self.pins]
-        self.order = [k for k in keys if k not in self.pins]
-        if new_pins != [p for p in self.pins if p in keys]:
-            self.pins = new_pins + [p for p in self.pins if p not in keys]
+        self.order = [b.key for b in self.taskbar.get_children()]
+        new_pins = [k for k in self.order if k in self.pins] + [p for p in self.pins if p not in self.order]
+        if new_pins != self.pins:
+            self.pins = new_pins   # pinned apps remember their order
             write_pins(self.pins)
         self.sync()
 
@@ -965,31 +966,141 @@ class Bar(Gtk.Window):
                                False, False, 0)
 
 
-# --- Desktop Recycle Bin ----------------------------------------------------
+# --- SkorneXDesktop: desktop icons -----------------------------------------
+
+DESKTOP_DIR = os.path.join(HOME, "Desktop")
+
+
+def add_to_desktop(info):
+    """Put an app shortcut on the desktop (a copy of its .desktop file)."""
+    os.makedirs(DESKTOP_DIR, exist_ok=True)
+    source = info.get_filename()
+    if not source:
+        return
+    target = os.path.join(DESKTOP_DIR, os.path.basename(source))
+    with open(source) as src, open(target, "w") as dst:
+        dst.write(src.read())
+    os.chmod(target, 0o755)
+
+
+class DesktopIcon(Gtk.EventBox):
+    """One icon on the desktop: picture, name, double-click to open."""
+
+    def __init__(self, name, icon, open_it, menu_items):
+        super().__init__()
+        self.open_it, self.menu_items = open_it, menu_items
+        self.get_style_context().add_class("desktop-icon")
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        self.image = Gtk.Image()
+        self.set_icon(icon)
+        box.pack_start(self.image, False, False, 0)
+        text = label(name, "desktop-label")
+        text.set_max_width_chars(12)
+        text.set_line_wrap(True)
+        text.set_lines(2)
+        text.set_ellipsize(Pango.EllipsizeMode.END)
+        text.set_justify(Gtk.Justification.CENTER)
+        box.pack_start(text, False, False, 0)
+        self.add(box)
+        self.set_size_request(92, -1)
+        self.connect("button-press-event", self.on_press)
+
+    def set_icon(self, icon):
+        if isinstance(icon, str):
+            self.image.set_from_icon_name(icon, Gtk.IconSize.DIALOG)
+        elif icon:
+            self.image.set_from_gicon(icon, Gtk.IconSize.DIALOG)
+        self.image.set_pixel_size(48)
+
+    def on_press(self, _w, event):
+        if event.type == DOUBLE_CLICK and event.button == 1:
+            self.open_it()
+        elif event.button == 3:
+            menu = Gtk.Menu()
+            for text, callback in self.menu_items:
+                item = Gtk.MenuItem(label=text)
+                item.connect("activate", lambda _i, c=callback: after_menu(c))
+                menu.append(item)
+            menu.show_all()
+            menu.attach_to_widget(self, None)
+            menu.popup_at_pointer(event)
+        return True
+
 
 class Desktop(Gtk.Window):
-    """The Recycle Bin icon, top left of the desktop, under all windows."""
+    """Desktop icons, top left, under all windows: the Recycle Bin, then
+    everything in ~/Desktop (files, folders, app shortcuts), like Windows.
+    Right-click a taskbar app and pick "Add to desktop" to add a shortcut."""
 
     def __init__(self, app):
         super().__init__(application=app)
         make_layer(self, GtkLayerShell.Layer.BOTTOM, [GtkLayerShell.Edge.TOP, GtkLayerShell.Edge.LEFT],
                    namespace="skornex-desktop")
-        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.TOP, 16)
-        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.LEFT, 16)
+        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.TOP, 12)
+        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.LEFT, 12)
         make_transparent(self)
         self.get_style_context().add_class("desktop")
-        self.icon = Gtk.EventBox()
-        self.icon.get_style_context().add_class("desktop-icon")
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        self.image = Gtk.Image()
-        box.pack_start(self.image, False, False, 0)
-        box.pack_start(label("Recycle Bin", "desktop-label"), False, False, 0)
-        self.icon.add(box)
-        self.icon.connect("button-press-event", self.on_press)
-        self.add(self.icon)
-        self.update()
-        GLib.timeout_add_seconds(3, self.update)
+        self.grid = Gtk.FlowBox()
+        self.grid.set_orientation(Gtk.Orientation.VERTICAL)   # fill a column, then the next, like Windows
+        self.grid.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.grid.set_max_children_per_line(7)
+        self.grid.set_row_spacing(6)
+        self.grid.set_column_spacing(6)
+        self.add(self.grid)
+
+        self.trash = DesktopIcon("Recycle Bin", "user-trash", lambda: spawn("nemo", "trash:///"),
+                                 [("Open", lambda: spawn("nemo", "trash:///")),
+                                  ("Empty Recycle Bin", self.confirm_empty)])
+        os.makedirs(DESKTOP_DIR, exist_ok=True)
+        self.monitor = Gio.File.new_for_path(DESKTOP_DIR).monitor_directory(Gio.FileMonitorFlags.NONE, None)
+        self.monitor.connect("changed", lambda *_: GLib.idle_add(self.refresh))
+        self.refresh()
+        self.update_trash()
+        GLib.timeout_add_seconds(3, self.update_trash)
         self.show_all()
+        print("SkorneXDesktop started", file=sys.stderr, flush=True)
+
+    def refresh(self):
+        for child in self.grid.get_children():
+            box = child.get_child()
+            child.remove(box)
+            self.grid.remove(child)
+        self.grid.add(self.trash)
+        try:
+            names = sorted(os.listdir(DESKTOP_DIR), key=str.casefold)
+        except OSError:
+            names = []
+        for name in names:
+            if name.startswith("."):
+                continue
+            self.grid.add(self.make_icon(os.path.join(DESKTOP_DIR, name)))
+        self.grid.show_all()
+        return False
+
+    def make_icon(self, path):
+        gfile = Gio.File.new_for_path(path)
+        if path.endswith(".desktop"):
+            info = Gio.DesktopAppInfo.new_from_filename(path)
+            if info:
+                return DesktopIcon(info.get_display_name(), info.get_icon(),
+                                   lambda: spawn("gio", "launch", path),
+                                   [("Open", lambda: spawn("gio", "launch", path)),
+                                    ("Remove from desktop", lambda: self.remove_file(gfile))])
+        try:
+            icon = gfile.query_info("standard::icon", Gio.FileQueryInfoFlags.NONE, None).get_icon()
+        except GLib.Error:
+            icon = "text-x-generic"
+        return DesktopIcon(os.path.basename(path), icon, lambda: spawn("xdg-open", path),
+                           [("Open", lambda: spawn("xdg-open", path)),
+                            ("Show in Files", lambda: spawn("nemo", DESKTOP_DIR)),
+                            ("Delete", lambda: self.remove_file(gfile))])
+
+    @staticmethod
+    def remove_file(gfile):
+        try:
+            gfile.trash(None)   # to the Recycle Bin, like Windows
+        except GLib.Error:
+            pass
 
     def count(self):
         try:
@@ -998,25 +1109,8 @@ class Desktop(Gtk.Window):
         except GLib.Error:
             return 0
 
-    def update(self):
-        name = "user-trash-full" if self.count() else "user-trash"
-        self.image.set_from_icon_name(name, Gtk.IconSize.DIALOG)
-        self.image.set_pixel_size(48)
-        return True
-
-    def on_press(self, _w, event):
-        if event.type == DOUBLE_CLICK and event.button == 1:
-            spawn("nemo", "trash:///")
-        elif event.button == 3:
-            menu = Gtk.Menu()
-            for text, callback in (("Open", lambda: spawn("nemo", "trash:///")),
-                                   ("Empty Recycle Bin", self.confirm_empty)):
-                item = Gtk.MenuItem(label=text)
-                item.connect("activate", lambda _i, c=callback: after_menu(c))
-                menu.append(item)
-            menu.show_all()
-            menu.attach_to_widget(self.icon, None)
-            menu.popup_at_pointer(event)
+    def update_trash(self):
+        self.trash.set_icon("user-trash-full" if self.count() else "user-trash")
         return True
 
     def confirm_empty(self):
@@ -1030,7 +1124,7 @@ class Desktop(Gtk.Window):
         if dialog.run() == Gtk.ResponseType.OK:
             run("gio", "trash", "--empty")
         dialog.destroy()
-        self.update()
+        self.update_trash()
 
 
 # --- Start up ---------------------------------------------------------------

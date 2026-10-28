@@ -57,3 +57,4 @@ window.desktop, window.catcher { background-color: transparent; }
 .desktop-icon { padding: 6px 4px; border-radius: 6px; }
 .desktop-icon:hover { background-color: alpha(#${SURFACE}, 0.8); }
 .desktop-label { color: #${TEXT}; text-shadow: 0 1px 2px black; }
+window.desktop flowbox, window.desktop flowboxchild { background: transparent; padding: 0; }
