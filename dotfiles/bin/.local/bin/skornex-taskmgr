@@ -136,6 +136,8 @@ class TaskManager(Gtk.ApplicationWindow):
             column.set_min_width(90)
             column.set_alignment(1.0)
             self.view.append_column(column)
+        for col in (COL_NAME, COL_CPU_SORT, COL_MEM_SORT):
+            self.store.set_sort_func(col, self.compare, col)
         self.store.set_sort_column_id(COL_MEM_SORT, Gtk.SortType.DESCENDING)
 
         self.view.connect("button-press-event", self.on_click)
@@ -250,8 +252,8 @@ class TaskManager(Gtk.ApplicationWindow):
         # selection stay put while the numbers change.
         if not hasattr(self, "parents"):
             self.parents = {}
-            for kind, rank in (("app", 2e18), ("background", 1e18)):
-                it = self.store.append(None, [None, "", "", "", 0, "", rank, rank])
+            for kind, rank in (("app", 0), ("background", 1)):
+                it = self.store.append(None, [None, "", "", "", rank, "", 0.0, 0.0])
                 self.parents[kind] = Gtk.TreeRowReference.new(self.store, self.store.get_path(it))
         for key in list(self.row_refs):
             if key not in self.rows or not self.row_refs[key].valid():
@@ -285,6 +287,18 @@ class TaskManager(Gtk.ApplicationWindow):
         key = model[it][COL_KEY] if it else ""
         self.selected_key = key or None     # a section header isn't a task
         self.end_button.set_sensitive(bool(key))
+
+    def compare(self, model, a, b, col):
+        """Sort rows inside each section; the sections themselves stay put
+        (Apps on top, Background processes below) whichever way you sort."""
+        if model.iter_parent(a) is None and model.iter_parent(b) is None:
+            rank = model[a][COL_PID] - model[b][COL_PID]
+            _, order = model.get_sort_column_id()
+            return rank if order == Gtk.SortType.ASCENDING else -rank   # GTK flips it for descending
+        va, vb = model[a][col], model[b][col]
+        if isinstance(va, str):
+            va, vb = va.casefold(), vb.casefold()
+        return (va > vb) - (va < vb)
 
     # --- Actions ---
 
