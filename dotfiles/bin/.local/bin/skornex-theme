@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Apply ~/.config/rice/colors to every themed app.
+# skornex-theme: apply ~/.config/skornex/colors to everything SkorneX themes.
 # Fills in the templates in the repo's theme/templates/ folder and writes the
 # results into ~/.config, then reloads whatever is running.
 set -euo pipefail
 
-colors="$HOME/.config/rice/colors"
+colors="$HOME/.config/skornex/colors"
 repo="$(cd "$(dirname "$(readlink -f "$colors")")/../../../.." && pwd)"
 templates="$repo/theme/templates"
 
@@ -23,7 +23,7 @@ done < <(find "$templates" -type f -print0)
 # Reload what's running. Nothing to do outside a desktop session.
 if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
     labwc -r 2>/dev/null || true
-    pkill -x waybar && (waybar >/dev/null 2>&1 &)
+    pkill -f skornex-bar && (setsid -f "$HOME/.local/bin/skornex-bar" >/dev/null 2>&1)
     pkill -x dunst && (dunst >/dev/null 2>&1 &)
     pkill -x swaybg && (swaybg -c "#$BG" >/dev/null 2>&1 &)
     pkill -USR1 -x kitty || true

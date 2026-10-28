@@ -1,11 +1,11 @@
-# LinuxSetup
+# SkorneX
 
-My Arch Linux setup, built from nothing: a minimal Arch install, the labwc
-window manager (windows float like on Windows, no tiling), and only the pieces
-I picked. Gaming (Steam, Lutris, World of Warcraft) on the real PC.
+My own Arch Linux desktop, built from nothing: a minimal Arch install, the
+labwc window manager (windows float like on Windows, no tiling), and only the
+pieces I picked. Gaming (Steam, Lutris, World of Warcraft) on the real PC.
 
-There's no settings app. Everything is a text file in this repo or a small
-script I own.
+There's no settings app. Everything is a text file in this repo or a SkorneX
+tool I own.
 
 ## What's in here
 
@@ -15,60 +15,59 @@ script I own.
 | `gaming.sh` | Real PC only: enables `[multilib]`, detects your GPU and installs drivers, then Steam, Lutris, GameMode, MangoHud. |
 | `packages/` | Package lists: `pkglist.txt` (official repos), `aurlist.txt` (AUR), `gaming.txt`. |
 | `dotfiles/` | Config files, linked into `~` with GNU Stow. Each folder mirrors your home folder. |
-| `dotfiles/rice/.config/rice/colors` | **The one file with all the colors.** |
-| `theme/templates/` | Configs that use those colors. `rice-theme` fills them in. |
-| `dotfiles/bin/.local/bin/` | Our own small tools (below). |
+| `dotfiles/skornex/.config/skornex/colors` | **The one file with all the colors.** |
+| `dotfiles/skornex/.config/skornex/pins` | Apps pinned to the taskbar. |
+| `dotfiles/bin/.local/bin/` | The SkorneX tools (below). |
+| `theme/templates/` | Configs that use the colors. `skornex-theme` fills them in. |
 | `system/firefox-policies.json` | Firefox debloat settings. |
 | `scripts/check-packages.sh` | Lists installed packages that aren't in the lists yet. |
 
 All scripts are safe to run more than once.
 
-## The desktop
-
-| Piece | What it is | Config |
-|---|---|---|
-| Window manager | labwc | `dotfiles/labwc/.config/labwc/` (`rc.xml` = settings and shortcuts, `autostart` = what starts with it) |
-| Taskbar | Waybar, bottom: search bar, pinned apps, open apps, hidden-icons tray, Recycle Bin, network, volume, clock, power | `dotfiles/waybar/…/config.jsonc` |
-| Launcher | rofi | `dotfiles/rofi/…/config.rasi` |
-| Terminal | kitty, Maple Mono NF | `dotfiles/kitty/…/kitty.conf` |
-| Files | Nemo | |
-| Notifications | dunst | `theme/templates/dunst/dunstrc` |
-| Lock screen | hyprlock: black, clock, password box | `theme/templates/hypr/hyprlock.conf` |
-| Login | greetd boots straight to the lock screen | `install.sh` step 6 |
-| Background | solid color from the colors file | `dotfiles/labwc/…/autostart` |
-| Idle | lock after 10 min, monitor off after 15 | `dotfiles/labwc/…/autostart` |
-
-### Our own tools
-
-Each one is a short script in `dotfiles/bin/.local/bin/` that uses rofi as its
-window, so it matches the colors automatically.
+## SkorneX tools
 
 | Tool | Opens with | Does |
 |---|---|---|
-| `spotlight` | Search bar on the taskbar, Ctrl+Space | Search apps and files in your home folder together, like Spotlight. Enter opens it. |
-| `launcher` | Windows key | The app list, above the search bar. |
-| `taskbar-pins` | Right-click the search bar | Pin or unpin apps. Pins live in `~/.config/rice/pins` (Files is pinned by default). |
-| `recycle-bin` | Bin icon on the taskbar | Click to open it in Nemo, right-click to empty it. |
-| `calendar-popup` | Click the clock | This month's calendar. |
-| `force-quit` | Ctrl+Shift+Esc | Lists open apps with memory use. Pick one, confirm, it's closed. |
-| `power-menu` | Ctrl+Alt+Delete, power icon on the taskbar | Lock, Log out, Restart, Shut down. |
-| `sound-output` | Click the volume on the taskbar | Pick speakers, headset, etc. |
-| `network-menu` | Click the network icon on the taskbar | Shows your connection, joins Wi-Fi, opens `nmtui` for anything else. |
-| `screenshot` | Print Screen keys | Region or full screen to the clipboard, or save to a file. |
-| `rice-theme` | Run it in a terminal | Applies the colors file everywhere. |
+| `skornex-bar` (**SkorneXBar**) | Starts with the desktop | The taskbar and the desktop Recycle Bin. See below. |
+| `skornex-theme` | Run it in a terminal | Applies the colors file everywhere. |
+| `skornex-forcequit` | Ctrl+Shift+Esc | Lists open apps with memory use. Pick one, confirm, it's closed. |
+| `skornex-screenshot` | Print Screen keys | Region or full screen to the clipboard, or save to a file. |
+
+### SkorneXBar
+
+Works like the Windows taskbar:
+
+- **Search box** (far left), or the **Windows key** or **Ctrl+Space**: type to
+  find apps and files in your home folder. Shows "No results" when nothing
+  matches. With nothing typed, it lists all apps.
+- **App buttons** start on the left: pinned apps first (Files is pinned by
+  default), then other open apps. Three looks: pinned but closed (plain), open
+  (line under it), the app you're using (highlighted, brighter line).
+  - Click: open it, switch to it, or minimize it if you're already using it.
+  - Right-click: **Pin to taskbar** / **Unpin from taskbar**, new window,
+    close.
+  - Drag a button left or right to reorder. Pinned order is saved.
+- **^**: hidden icons (Discord, Steam…) in a small pop-up. Click one to open
+  it, right-click for its menu.
+- **Network, volume, clock, power**: each opens a small panel in the
+  bottom-right corner. Click the button again, click anywhere else, or press
+  Esc to close it. Volume has a slider and the output list (speakers,
+  headset…); scrolling on the volume changes it.
+- **Recycle Bin** on the desktop, top left: double-click to open, right-click
+  to empty.
 
 ## Colors
 
-All colors are in `~/.config/rice/colors` (Graphite: black and grays). Change
-a value, then run:
+All colors are in `~/.config/skornex/colors` (Graphite: black and grays).
+Change a value, then run:
 
 ```bash
-rice-theme
+skornex-theme
 ```
 
-It rewrites the taskbar, launcher, notifications, terminal, window borders and
-lock screen, and reloads what's running. App windows like Nemo use the dark
-`adw-gtk3-dark` theme.
+It rewrites SkorneXBar, the launcher menus, notifications, terminal, window
+borders and lock screen, and reloads what's running. App windows like Nemo use
+the dark `adw-gtk3-dark` theme.
 
 ## Setting up a machine
 
@@ -114,8 +113,7 @@ installing them. After rebooting:
 
 | Keys | Action |
 |---|---|
-| Win | App launcher |
-| Ctrl+Space | Search apps and files (Spotlight) |
+| Win, or Ctrl+Space | Search apps and files |
 | Win+R | Run a command |
 | Win+E | Files (Nemo) |
 | Ctrl+Alt+T | Terminal |
@@ -138,30 +136,18 @@ installing them. After rebooting:
 Dragging a window to a screen edge snaps it to half the screen, a corner to a
 quarter, the top to maximize. Clicking the empty desktop does nothing.
 
-### The taskbar
-
-- **Search bar** (far left): search apps and files. Right-click it to pin or
-  unpin apps.
-- **App buttons** start on the left: pinned apps first, then other open apps.
-  Each has three looks, like Windows: pinned but closed (plain), open (thin
-  line under it), and the one you're using (highlighted, bright line). Click
-  the app you're using to minimize it.
-- **^** (right side) shows hidden icons, such as Discord and Steam when
-  they're closed to the tray.
-- **Menus** (network, volume, clock, power) open as a small box above their
-  button. Click the button again, or anywhere else, to close it.
-
-Mouse side buttons (back/forward) work in Firefox and Nemo on their own.
-
 Alt+Print Screen can't grab just the current window on labwc, so it works like
-Print Screen (drag a box around it).
+Print Screen (drag a box around it). Mouse side buttons (back/forward) work in
+Firefox and Nemo on their own.
 
 ## Day-to-day
 
 - **Edit a config:** edit it in place (for example `~/.config/labwc/rc.xml`).
   It's a symlink into the repo, so just commit the change.
 - **Edit a themed config** (anything in `theme/templates/`): edit the template
-  in the repo, then run `rice-theme`. The file in `~/.config` gets overwritten.
+  in the repo, then run `skornex-theme`. The file in `~/.config` gets overwritten.
+- **Change SkorneXBar:** edit `dotfiles/bin/.local/bin/skornex-bar` (Python),
+  then run `pkill -f skornex-bar; skornex-bar &`.
 - **Add a new config file to the repo:** move it into the matching place under
   `dotfiles/<name>/`, then run `./install.sh` again to link it.
 - **Installed something new?** Run `pkgcheck` to see what isn't tracked, and

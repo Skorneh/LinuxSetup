@@ -4,8 +4,8 @@
 # LOCK_ON_START, so your password is asked here instead of at a login screen.
 [ -n "$LOCK_ON_START" ] && hyprlock &
 
-swaybg -c "#$(. ~/.config/rice/colors; echo "$BG")" >/dev/null 2>&1 &
-waybar >/dev/null 2>&1 &
+swaybg -c "#$(. ~/.config/skornex/colors; echo "$BG")" >/dev/null 2>&1 &
+~/.local/bin/skornex-bar >/dev/null 2>&1 &   # SkorneXBar: taskbar and desktop Recycle Bin
 dunst >/dev/null 2>&1 &
 /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 >/dev/null 2>&1 &
 wl-paste --type text --watch cliphist store >/dev/null 2>&1 &

@@ -1,0 +1,1037 @@
+#!/usr/bin/env python3
+"""SkorneXBar: the SkorneX taskbar and the desktop Recycle Bin.
+
+    skornex-bar          start it (labwc's autostart does this)
+    skornex-bar search   open or close the search (Windows key, Ctrl+Space)
+    skornex-bar power    open or close the power menu (Ctrl+Alt+Delete)
+
+Works like the Windows taskbar:
+  - Search box on the left. Apps and files from your home folder.
+  - App buttons start on the left: pinned apps first, then other open apps.
+    Three looks: pinned only, open (line under it), the app you're using
+    (highlighted). Right-click a button to pin or unpin it. Drag buttons to
+    reorder them.
+  - Right side: ^ for hidden icons (Discord, Steam…), network, volume, clock,
+    power. Each opens a small panel in the bottom-right corner. Click its
+    button again or anywhere else to close it.
+  - Recycle Bin on the desktop, top left. Double-click to open, right-click to
+    empty.
+
+Pinned apps are in ~/.config/skornex/pins. Colors come from
+~/.config/skornex/style.css, made by skornex-theme.
+"""
+
+import json
+import os
+import subprocess
+import sys
+import time
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("GtkLayerShell", "0.1")
+gi.require_version("Libxfce4windowing", "0.0")
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk, GtkLayerShell, Pango  # noqa: E402
+from gi.repository import Libxfce4windowing as Xfw  # noqa: E402
+
+try:
+    gi.require_version("DbusmenuGtk3", "0.4")
+    from gi.repository import DbusmenuGtk3  # noqa: E402
+except (ValueError, ImportError):
+    DbusmenuGtk3 = None
+
+HOME = os.path.expanduser("~")
+CONFIG = os.path.join(HOME, ".config", "skornex")
+PINS_FILE = os.path.join(CONFIG, "pins")
+STYLE_FILE = os.path.join(CONFIG, "style.css")
+BAR_HEIGHT = 38
+ICON_SIZE = 22
+
+# Nerd Font icons (Maple Mono NF).
+ICON_SEARCH = ""
+ICON_UP = ""
+ICON_ETHERNET = "\U000f0200"
+ICON_WIFI = "\U000f05a9"
+ICON_OFFLINE = "\U000f0318"
+ICON_VOLUME = ["", "", ""]
+ICON_MUTED = "\U000f075f"
+ICON_POWER = ""
+
+DOUBLE_CLICK = getattr(Gdk.EventType, "DOUBLE_BUTTON_PRESS", None) or getattr(Gdk.EventType, "_2BUTTON_PRESS")
+
+
+# --- Small helpers ----------------------------------------------------------
+
+def run(*cmd):
+    """Run a command, return its output ('' if it fails)."""
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def spawn(*cmd):
+    """Start a program on its own, without waiting for it."""
+    try:
+        subprocess.Popen(cmd, start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        pass
+
+
+def label(text, *classes):
+    widget = Gtk.Label(label=text)
+    for c in classes:
+        widget.get_style_context().add_class(c)
+    return widget
+
+
+def make_layer(window, layer, anchors, keyboard=GtkLayerShell.KeyboardMode.NONE, namespace="skornex"):
+    GtkLayerShell.init_for_window(window)
+    GtkLayerShell.set_namespace(window, namespace)
+    GtkLayerShell.set_layer(window, layer)
+    for edge in anchors:
+        GtkLayerShell.set_anchor(window, edge, True)
+    GtkLayerShell.set_keyboard_mode(window, keyboard)
+
+
+def make_transparent(window):
+    visual = window.get_screen().get_rgba_visual()
+    if visual:
+        window.set_visual(visual)
+    window.set_app_paintable(True)
+
+
+# --- Apps and pins ----------------------------------------------------------
+
+class Apps:
+    """Installed apps (.desktop files), and matching windows to them."""
+
+    def __init__(self):
+        self.reload()
+        self.monitor = Gio.AppInfoMonitor.get()
+        self.monitor.connect("changed", lambda *_: self.reload())
+
+    def reload(self):
+        self.by_id = {}
+        self.by_wmclass = {}
+        for info in Gio.AppInfo.get_all():
+            if not isinstance(info, Gio.DesktopAppInfo):
+                continue
+            app_id = info.get_id()[:-len(".desktop")]
+            self.by_id[app_id] = info
+            wm = info.get_startup_wm_class()
+            if wm:
+                self.by_wmclass[wm.lower()] = app_id
+
+    def visible(self):
+        return sorted((i for i in self.by_id.items() if i[1].should_show()),
+                      key=lambda i: i[1].get_display_name().casefold())
+
+    def find(self, names):
+        """The app ID for a window, given the names it reports."""
+        lower = {k.lower(): k for k in self.by_id}
+        for name in names:
+            if not name:
+                continue
+            n = name.lower()
+            for candidate in (name, n, n.split(".")[-1]):
+                if candidate in self.by_id:
+                    return candidate
+                if candidate in lower:
+                    return lower[candidate]
+                if candidate in self.by_wmclass:
+                    return self.by_wmclass[candidate]
+        return None
+
+    def launch(self, app_id):
+        info = self.by_id.get(app_id)
+        if info:
+            try:
+                info.launch([], None)
+            except GLib.Error:
+                pass
+
+
+def read_pins():
+    try:
+        with open(PINS_FILE) as f:
+            return [ln.strip() for ln in f if ln.strip() and not ln.startswith("#")]
+    except OSError:
+        return ["nemo"]
+
+
+def write_pins(pins):
+    os.makedirs(CONFIG, exist_ok=True)
+    with open(PINS_FILE, "w") as f:  # follows the link into the repo
+        f.write("# Apps pinned to the taskbar, left to right. One app ID per line\n"
+                "# (the .desktop file name). Right-click a taskbar button to pin or unpin.\n")
+        f.writelines(p + "\n" for p in pins)
+
+
+# --- Taskbar app buttons ----------------------------------------------------
+
+class AppButton(Gtk.Button):
+    """One app on the taskbar: pinned, open, or both."""
+
+    def __init__(self, bar, key, info):
+        super().__init__()
+        self.bar, self.key, self.info = bar, key, info
+        self.windows = []
+        self.set_relief(Gtk.ReliefStyle.NONE)
+        self.set_can_focus(False)
+        self.get_style_context().add_class("app")
+        self.image = Gtk.Image()
+        self.add(self.image)
+        self.set_icon()
+        self.add_events(Gdk.EventMask.BUTTON_MOTION_MASK)
+        self.connect("button-press-event", self.on_press)
+        self.connect("motion-notify-event", self.on_motion)
+        self.connect("button-release-event", self.on_release)
+        self.press_x = None
+        self.dragging = False
+
+    def set_icon(self):
+        icon = self.info.get_icon() if self.info else None
+        if icon:
+            self.image.set_from_gicon(icon, Gtk.IconSize.LARGE_TOOLBAR)
+            self.image.set_pixel_size(ICON_SIZE)
+        elif self.windows:
+            pixbuf = self.windows[0].get_icon(ICON_SIZE, self.get_scale_factor())
+            if pixbuf:
+                self.image.set_from_pixbuf(pixbuf)
+
+    def update_look(self):
+        ctx = self.get_style_context()
+        running = bool(self.windows)
+        active = any(w.is_active() for w in self.windows)
+        for cls, on in (("open", running), ("active", active), ("closed", not running)):
+            (ctx.add_class if on else ctx.remove_class)(cls)
+
+    # Clicking, like Windows.
+    def click(self):
+        if not self.windows:
+            self.bar.apps.launch(self.key)
+            return
+        recent = sorted(self.windows, key=lambda w: self.bar.last_active.get(w, 0))
+        active = [w for w in recent if w.is_active()]
+        if active and len(recent) == 1:
+            self.try_(active[0].set_minimized, True)       # click the app you're using: minimize
+        elif active:
+            nxt = recent[(recent.index(active[0]) + 1) % len(recent)]
+            self.try_(nxt.activate, None, 0)                # several windows: go to the next one
+        else:
+            self.try_(recent[-1].activate, None, 0)
+
+    @staticmethod
+    def try_(fn, *args):
+        try:
+            fn(*args)
+        except GLib.Error:
+            pass
+
+    def menu(self, event):
+        menu = Gtk.Menu()
+        name = self.info.get_display_name() if self.info else (self.windows[0].get_name() if self.windows else "")
+
+        def item(text, callback):
+            mi = Gtk.MenuItem(label=text)
+            mi.connect("activate", lambda *_: callback())
+            menu.append(mi)
+
+        if self.info:
+            item(name if not self.windows else f"New {name} window", lambda: self.bar.apps.launch(self.key))
+            if self.key in self.bar.pins:
+                item("Unpin from taskbar", lambda: self.bar.unpin(self.key))
+            else:
+                item("Pin to taskbar", lambda: self.bar.pin(self.key))
+        if self.windows:
+            menu.append(Gtk.SeparatorMenuItem())
+            text = "Close window" if len(self.windows) == 1 else "Close all windows"
+            item(text, lambda: [self.try_(w.close, 0) for w in list(self.windows)])
+        menu.show_all()
+        menu.attach_to_widget(self, None)
+        menu.popup_at_widget(self, Gdk.Gravity.NORTH, Gdk.Gravity.SOUTH, event)
+
+    # Drag to reorder; the button follows the mouse.
+    def on_press(self, _w, event):
+        if event.button == 3:
+            self.menu(event)
+            return True
+        if event.button == 1:
+            self.press_x = event.x
+            self.dragging = False
+        return False
+
+    def on_motion(self, _w, event):
+        if self.press_x is None:
+            return False
+        if not self.dragging and abs(event.x - self.press_x) > 8:
+            self.dragging = True
+            self.get_style_context().add_class("dragging")
+        if self.dragging:
+            box = self.get_parent()
+            x, _ = self.translate_coordinates(box, int(event.x), int(event.y))
+            others = [c for c in box.get_children() if c is not self]
+            index = sum(1 for c in others if c.get_allocation().x + c.get_allocation().width / 2 < x)
+            box.reorder_child(self, index)
+        return True
+
+    def on_release(self, _w, event):
+        if event.button == 2:
+            self.bar.apps.launch(self.key)
+        elif event.button == 1 and self.press_x is not None:
+            if self.dragging:
+                self.get_style_context().remove_class("dragging")
+                self.bar.reordered()
+            else:
+                self.click()
+        self.press_x = None
+        self.dragging = False
+        return False
+
+
+# --- Tray (hidden icons): StatusNotifierItem host and watcher ---------------
+
+WATCHER_XML = """
+<node><interface name="org.kde.StatusNotifierWatcher">
+  <method name="RegisterStatusNotifierItem"><arg type="s" direction="in"/></method>
+  <method name="RegisterStatusNotifierHost"><arg type="s" direction="in"/></method>
+  <property name="RegisteredStatusNotifierItems" type="as" access="read"/>
+  <property name="IsStatusNotifierHostRegistered" type="b" access="read"/>
+  <property name="ProtocolVersion" type="i" access="read"/>
+  <signal name="StatusNotifierItemRegistered"><arg type="s"/></signal>
+  <signal name="StatusNotifierItemUnregistered"><arg type="s"/></signal>
+  <signal name="StatusNotifierHostRegistered"/>
+</interface></node>"""
+
+
+class Tray:
+    """Collects tray icons from apps like Discord and Steam."""
+
+    def __init__(self, on_change):
+        self.on_change = on_change
+        self.items = {}   # "busname/path" -> properties dict
+        self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        self.node = Gio.DBusNodeInfo.new_for_xml(WATCHER_XML)
+        for name in ("org.kde.StatusNotifierWatcher", "org.freedesktop.StatusNotifierWatcher"):
+            Gio.bus_own_name_on_connection(self.bus, name, Gio.BusNameOwnerFlags.NONE, None, None)
+        self.bus.register_object("/StatusNotifierWatcher", self.node.interfaces[0],
+                                 self.on_call, self.on_get_property, None)
+
+    def on_call(self, _conn, sender, _path, _iface, method, params, invocation):
+        if method == "RegisterStatusNotifierItem":
+            service = params.unpack()[0]
+            bus_name, path = (sender, service) if service.startswith("/") else (service, "/StatusNotifierItem")
+            self.add(bus_name, path)
+        invocation.return_value(None)
+
+    def on_get_property(self, _conn, _sender, _path, _iface, prop):
+        if prop == "RegisteredStatusNotifierItems":
+            return GLib.Variant("as", list(self.items))
+        if prop == "IsStatusNotifierHostRegistered":
+            return GLib.Variant("b", True)
+        if prop == "ProtocolVersion":
+            return GLib.Variant("i", 0)
+        return None
+
+    def add(self, bus_name, path):
+        key = f"{bus_name}{path}"
+        if key in self.items:
+            return
+        self.items[key] = {"bus": bus_name, "path": path}
+        self.bus.emit_signal(None, "/StatusNotifierWatcher", "org.kde.StatusNotifierWatcher",
+                             "StatusNotifierItemRegistered", GLib.Variant("(s)", (key,)))
+        Gio.bus_watch_name_on_connection(self.bus, bus_name, Gio.BusNameWatcherFlags.NONE,
+                                         None, lambda *_: self.remove(key))
+        for iface in ("org.kde.StatusNotifierItem", "org.freedesktop.StatusNotifierItem"):
+            self.bus.signal_subscribe(bus_name, iface, None, path, None,
+                                      Gio.DBusSignalFlags.NONE, lambda *_: self.refresh(key))
+        self.refresh(key)
+
+    def remove(self, key):
+        if self.items.pop(key, None) is not None:
+            self.on_change()
+
+    def refresh(self, key):
+        item = self.items.get(key)
+        if not item:
+            return
+        for iface in ("org.kde.StatusNotifierItem", "org.freedesktop.StatusNotifierItem"):
+            try:
+                result = self.bus.call_sync(item["bus"], item["path"], "org.freedesktop.DBus.Properties",
+                                            "GetAll", GLib.Variant("(s)", (iface,)), None,
+                                            Gio.DBusCallFlags.NONE, 2000, None)
+            except GLib.Error:
+                continue
+            props = result.unpack()[0]
+            if props:
+                item.update(props, iface=iface)
+                break
+        self.on_change()
+
+    def icon_widget(self, item):
+        image = Gtk.Image()
+        theme_path = item.get("IconThemePath")
+        if theme_path:
+            Gtk.IconTheme.get_default().append_search_path(theme_path)
+        name = item.get("IconName")
+        if name and Gtk.IconTheme.get_default().has_icon(name):
+            image.set_from_icon_name(name, Gtk.IconSize.LARGE_TOOLBAR)
+            image.set_pixel_size(ICON_SIZE)
+            return image
+        pixbuf = self.pixmap(item.get("IconPixmap"))
+        if pixbuf:
+            image.set_from_pixbuf(pixbuf)
+        else:
+            image.set_from_icon_name("application-x-executable", Gtk.IconSize.LARGE_TOOLBAR)
+        return image
+
+    @staticmethod
+    def pixmap(pixmaps):
+        """Turn a tray icon's raw ARGB image into something GTK can show."""
+        if not pixmaps:
+            return None
+        w, h, data = max(pixmaps, key=lambda p: p[0] * p[1])
+        data = bytes(data)
+        if not w or not h or len(data) < w * h * 4:
+            return None
+        rgba = bytearray(len(data))
+        rgba[0::4], rgba[1::4], rgba[2::4], rgba[3::4] = data[1::4], data[2::4], data[3::4], data[0::4]
+        pixbuf = GdkPixbuf.Pixbuf.new_from_bytes(GLib.Bytes.new(bytes(rgba)), GdkPixbuf.Colorspace.RGB,
+                                                 True, 8, w, h, w * 4)
+        return pixbuf.scale_simple(ICON_SIZE, ICON_SIZE, GdkPixbuf.InterpType.BILINEAR)
+
+    def activate(self, item):
+        self.call(item, "Activate", GLib.Variant("(ii)", (0, 0)))
+
+    def context_menu(self, item, widget, event):
+        if DbusmenuGtk3 and item.get("Menu"):
+            menu = DbusmenuGtk3.Menu.new(item["bus"], item["Menu"])
+            menu.attach_to_widget(widget, None)
+            menu.popup_at_widget(widget, Gdk.Gravity.NORTH, Gdk.Gravity.SOUTH, event)
+            item["_menu"] = menu   # keep it alive while open
+        else:
+            self.call(item, "ContextMenu", GLib.Variant("(ii)", (0, 0)))
+
+    def call(self, item, method, params):
+        self.bus.call(item["bus"], item["path"], item.get("iface", "org.kde.StatusNotifierItem"),
+                      method, params, None, Gio.DBusCallFlags.NONE, 2000, None, None)
+
+
+# --- Pop-up panels ("flyouts") ----------------------------------------------
+
+class Flyout(Gtk.Window):
+    """A small panel above the taskbar. Closes when you click anywhere else."""
+
+    def __init__(self, side="right", keyboard=False):
+        super().__init__()
+        self.side = side
+        edge = GtkLayerShell.Edge.RIGHT if side == "right" else GtkLayerShell.Edge.LEFT
+        mode = GtkLayerShell.KeyboardMode.EXCLUSIVE if keyboard else GtkLayerShell.KeyboardMode.ON_DEMAND
+        make_layer(self, GtkLayerShell.Layer.OVERLAY, [GtkLayerShell.Edge.BOTTOM, edge], mode, "skornex-flyout")
+        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.BOTTOM, 8)
+        GtkLayerShell.set_margin(self, edge, 8)
+        self.get_style_context().add_class("flyout")
+        self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        self.box.get_style_context().add_class("flyout-box")
+        self.add(self.box)
+
+    def set_left(self, x):
+        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.LEFT, max(8, x))
+
+    def clear(self):
+        for child in self.box.get_children():
+            self.box.remove(child)
+
+
+class Catcher(Gtk.Window):
+    """An invisible layer over everything but the taskbar while a flyout is
+    open. Clicking it closes the flyout, like clicking away on Windows."""
+
+    def __init__(self, on_click):
+        super().__init__()
+        make_layer(self, GtkLayerShell.Layer.TOP,
+                   [GtkLayerShell.Edge.TOP, GtkLayerShell.Edge.BOTTOM,
+                    GtkLayerShell.Edge.LEFT, GtkLayerShell.Edge.RIGHT],
+                   namespace="skornex-catcher")
+        make_transparent(self)
+        self.get_style_context().add_class("catcher")
+        self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        self.connect("button-press-event", lambda *_: on_click())
+
+
+# --- The bar ----------------------------------------------------------------
+
+class Bar(Gtk.Window):
+    def __init__(self, app):
+        super().__init__(application=app)
+        self.app = app
+        make_layer(self, GtkLayerShell.Layer.TOP,
+                   [GtkLayerShell.Edge.BOTTOM, GtkLayerShell.Edge.LEFT, GtkLayerShell.Edge.RIGHT],
+                   namespace="skornex-bar")
+        GtkLayerShell.auto_exclusive_zone_enable(self)
+        self.set_size_request(-1, BAR_HEIGHT)
+        self.get_style_context().add_class("bar")
+
+        self.apps = Apps()
+        self.pins = read_pins()
+        self.order = []          # open, unpinned apps in the order they appeared
+        self.buttons = {}
+        self.last_active = {}
+        self.open_flyout = None
+        self.catcher = Catcher(self.close_flyout)
+
+        row = Gtk.Box(spacing=2)
+        self.add(row)
+
+        # Left: search box, then app buttons.
+        self.search_button = Gtk.Button()
+        self.search_button.get_style_context().add_class("search")
+        self.search_button.set_can_focus(False)
+        search_row = Gtk.Box(spacing=8)
+        search_row.pack_start(label(ICON_SEARCH, "search-icon"), False, False, 0)
+        search_row.pack_start(label("Search", "search-text"), False, False, 0)
+        self.search_button.add(search_row)
+        self.search_button.connect("clicked", lambda *_: self.toggle("search"))
+        row.pack_start(self.search_button, False, False, 0)
+
+        self.taskbar = Gtk.Box(spacing=2)
+        row.pack_start(self.taskbar, False, False, 0)
+
+        # Right: hidden icons, network, volume, clock, power.
+        right = Gtk.Box(spacing=0)
+        row.pack_end(right, False, False, 0)
+        self.tray_button = self.bar_button(ICON_UP, "tray")
+        self.net_button = self.bar_button(ICON_OFFLINE, "network")
+        self.vol_button = self.bar_button("", "volume")
+        self.clock_button = self.bar_button("", "clock")
+        self.power_button = self.bar_button(ICON_POWER, "power")
+        for b in (self.tray_button, self.net_button, self.vol_button, self.clock_button, self.power_button):
+            right.pack_start(b, False, False, 0)
+        self.vol_button.add_events(Gdk.EventMask.SCROLL_MASK)
+        self.vol_button.connect("scroll-event", self.on_volume_scroll)
+
+        self.flyouts = {
+            "search": Flyout("left", keyboard=True),
+            "tray": Flyout("left"),
+            "network": Flyout(),
+            "volume": Flyout(),
+            "clock": Flyout(),
+            "power": Flyout(),
+        }
+        for fly in self.flyouts.values():
+            fly.connect("key-press-event", self.on_flyout_key)
+
+        # Windows.
+        self.screen = Xfw.Screen.get_default()
+        self.screen.connect("window-opened", lambda _s, w: self.watch_window(w))
+        self.screen.connect("window-closed", lambda *_: GLib.idle_add(self.sync))
+        self.screen.connect("active-window-changed", self.on_active_changed)
+        for w in self.screen.get_windows():
+            self.watch_window(w)
+
+        self.tray = Tray(self.on_tray_change)
+        self.files_cache = (0, [])
+
+        self.tick()
+        GLib.timeout_add_seconds(1, self.tick)
+        self.sync()
+        self.show_all()
+
+    def bar_button(self, text, name):
+        button = Gtk.Button()
+        button.set_relief(Gtk.ReliefStyle.NONE)
+        button.set_can_focus(False)
+        button.get_style_context().add_class("bar-button")
+        button.get_style_context().add_class(name)
+        button.text = Gtk.Label(label=text)
+        button.add(button.text)
+        button.connect("clicked", lambda *_: self.toggle(name))
+        return button
+
+    # --- Window tracking and app buttons ---
+
+    def watch_window(self, window):
+        for sig in ("state-changed", "class-changed", "name-changed", "icon-changed"):
+            window.connect(sig, lambda *_: self.sync())
+        self.sync()
+
+    def on_active_changed(self, screen, _previous):
+        active = screen.get_active_window()
+        if active:
+            self.last_active[active] = time.monotonic()
+        for button in self.buttons.values():
+            button.update_look()
+
+    def group_key(self, window):
+        names = list(window.get_class_ids() or [])
+        application = window.get_application()
+        if application:
+            names.append(application.get_class_id())
+        app_id = self.apps.find(names)
+        return app_id or "window:" + (names[0] if names else window.get_name() or "?")
+
+    def sync(self, *_):
+        groups = {}
+        for w in self.screen.get_windows():
+            if w.is_skip_tasklist():
+                continue
+            groups.setdefault(self.group_key(w), []).append(w)
+        for key in groups:
+            if key not in self.pins and key not in self.order:
+                self.order.append(key)
+        self.order = [k for k in self.order if k in groups and k not in self.pins]
+        wanted = [p for p in self.pins if p in self.apps.by_id] + self.order
+
+        for key in list(self.buttons):
+            if key not in wanted:
+                self.taskbar.remove(self.buttons.pop(key))
+        for index, key in enumerate(wanted):
+            button = self.buttons.get(key)
+            if button is None:
+                button = AppButton(self, key, self.apps.by_id.get(key))
+                self.buttons[key] = button
+                self.taskbar.pack_start(button, False, False, 0)
+                button.show_all()
+            button.windows = groups.get(key, [])
+            if not button.info:
+                button.set_icon()
+            button.update_look()
+            if not button.dragging:
+                self.taskbar.reorder_child(button, index)
+        return False
+
+    def pin(self, key):
+        if key not in self.pins:
+            self.pins.append(key)
+            write_pins(self.pins)
+        self.sync()
+
+    def unpin(self, key):
+        if key in self.pins:
+            self.pins.remove(key)
+            write_pins(self.pins)
+        self.sync()
+
+    def reordered(self):
+        keys = [b.key for b in self.taskbar.get_children()]
+        new_pins = [k for k in keys if k in self.pins]
+        self.order = [k for k in keys if k not in self.pins]
+        if new_pins != [p for p in self.pins if p in keys]:
+            self.pins = new_pins + [p for p in self.pins if p not in keys]
+            write_pins(self.pins)
+        self.sync()
+
+    # --- Status on the right (clock, volume, network), every second ---
+
+    def tick(self):
+        self.clock_button.text.set_text(time.strftime("%-I:%M %p"))
+        now = time.monotonic()
+        if now - getattr(self, "_slow_tick", 0) >= 3:
+            self._slow_tick = now
+            self.update_volume()
+            self.update_network()
+        return True
+
+    def volume(self):
+        out = run("wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@")   # "Volume: 0.45 [MUTED]"
+        try:
+            return round(float(out.split()[1]) * 100), "MUTED" in out
+        except (IndexError, ValueError):
+            return None, False
+
+    def update_volume(self):
+        level, muted = self.volume()
+        if level is None:
+            self.vol_button.text.set_text(ICON_MUTED)
+            return
+        icon = ICON_MUTED if muted else ICON_VOLUME[min(2, level // 34)]
+        self.vol_button.text.set_text(f"{icon} {level}%")
+
+    def on_volume_scroll(self, _w, event):
+        step = "5%+" if event.direction == Gdk.ScrollDirection.UP or event.delta_y < 0 else "5%-"
+        run("wpctl", "set-volume", "-l", "1.0", "@DEFAULT_AUDIO_SINK@", step)
+        self.update_volume()
+        return True
+
+    def network(self):
+        """('ethernet'|'wifi'|None, connection name)."""
+        for line in run("nmcli", "-t", "-f", "TYPE,STATE,CONNECTION", "device").splitlines():
+            kind, state, conn = (line.split(":", 2) + ["", ""])[:3]
+            if state == "connected" and kind in ("ethernet", "wifi"):
+                return kind, conn
+        return None, ""
+
+    def update_network(self):
+        kind, _ = self.network()
+        self.net_button.text.set_text({"ethernet": ICON_ETHERNET, "wifi": ICON_WIFI}.get(kind, ICON_OFFLINE))
+
+    def on_tray_change(self):
+        if self.open_flyout == "tray":
+            self.fill_tray(self.flyouts["tray"])
+
+    # --- Flyouts ---
+
+    def toggle(self, name):
+        if self.open_flyout == name:
+            self.close_flyout()
+            return
+        self.close_flyout()
+        fly = self.flyouts[name]
+        fly.clear()
+        getattr(self, "fill_" + name)(fly)
+        if name == "tray":
+            alloc = self.tray_button.get_allocation()
+            fly.set_left(alloc.x + alloc.width // 2 - 80)
+        self.catcher.show_all()
+        fly.show_all()
+        fly.present()
+        self.open_flyout = name
+        for key, button in (("tray", self.tray_button), ("network", self.net_button),
+                            ("volume", self.vol_button), ("clock", self.clock_button),
+                            ("power", self.power_button), ("search", self.search_button)):
+            ctx = button.get_style_context()
+            (ctx.add_class if key == name else ctx.remove_class)("open")
+
+    def close_flyout(self):
+        if self.open_flyout:
+            self.flyouts[self.open_flyout].hide()
+            for button in (self.tray_button, self.net_button, self.vol_button,
+                           self.clock_button, self.power_button, self.search_button):
+                button.get_style_context().remove_class("open")
+        self.open_flyout = None
+        self.catcher.hide()
+
+    def on_flyout_key(self, _w, event):
+        if event.keyval == Gdk.KEY_Escape:
+            self.close_flyout()
+            return True
+        return False
+
+    def row_button(self, text, callback, *classes):
+        button = Gtk.Button(label=text)
+        button.set_relief(Gtk.ReliefStyle.NONE)
+        button.get_style_context().add_class("row")
+        for c in classes:
+            button.get_style_context().add_class(c)
+        child = button.get_child()
+        if isinstance(child, Gtk.Label):
+            child.set_xalign(0)
+            child.set_ellipsize(Pango.EllipsizeMode.END)
+        button.connect("clicked", lambda *_: callback())
+        return button
+
+    # Search: apps and files, like the Windows search box.
+    def fill_search(self, fly):
+        fly.set_size_request(520, 460)
+        entry = Gtk.SearchEntry()
+        entry.set_placeholder_text("Type to search apps and files")
+        results = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_vexpand(True)
+        scroll.add(results)
+        fly.box.pack_start(entry, False, False, 0)
+        fly.box.pack_start(scroll, True, True, 0)
+        files = self.home_files()
+
+        def show(*_):
+            for child in results.get_children():
+                results.remove(child)
+            query = entry.get_text().strip().casefold()
+            first = None
+            apps = []
+            for app_id, info in self.apps.visible():
+                hay = " ".join(filter(None, [info.get_display_name(), info.get_generic_name(),
+                                             " ".join(info.get_keywords() or []), app_id])).casefold()
+                if query in hay:
+                    starts = info.get_display_name().casefold().startswith(query)
+                    apps.append((not starts, info.get_display_name().casefold(), app_id, info))
+            apps.sort()
+            if not query:
+                results.pack_start(label("All apps", "section"), False, False, 0)
+            elif apps:
+                results.pack_start(label("Apps", "section"), False, False, 0)
+            for _, _, app_id, info in apps[: None if not query else 8]:
+                b = self.result_row(info.get_display_name(), info.get_icon(),
+                                    lambda a=app_id: (self.apps.launch(a), self.close_flyout()))
+                results.pack_start(b, False, False, 0)
+                first = first or b
+            matches = [f for f in files if query in os.path.basename(f).casefold()][:8] if query else []
+            if matches:
+                results.pack_start(label("Files", "section"), False, False, 0)
+            for path in matches:
+                b = self.result_row(os.path.basename(path), Gio.ThemedIcon.new("text-x-generic"),
+                                    lambda p=path: (spawn("xdg-open", os.path.join(HOME, p)), self.close_flyout()),
+                                    subtitle=os.path.dirname(path))
+                results.pack_start(b, False, False, 0)
+                first = first or b
+            if query and first is None:
+                results.pack_start(label(f"No results for “{entry.get_text().strip()}”", "empty"),
+                                   False, False, 12)
+            results.show_all()
+            entry.first = first
+
+        entry.first = None
+        entry.connect("search-changed", show)
+        entry.connect("activate", lambda *_: entry.first and entry.first.clicked())
+        show()
+        GLib.idle_add(entry.grab_focus)
+
+    def result_row(self, text, icon, callback, subtitle=None):
+        button = Gtk.Button()
+        button.set_relief(Gtk.ReliefStyle.NONE)
+        button.get_style_context().add_class("row")
+        box = Gtk.Box(spacing=10)
+        image = Gtk.Image()
+        if icon:
+            image.set_from_gicon(icon, Gtk.IconSize.LARGE_TOOLBAR)
+            image.set_pixel_size(ICON_SIZE)
+        box.pack_start(image, False, False, 0)
+        text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        name = Gtk.Label(label=text, xalign=0)
+        name.set_ellipsize(Pango.EllipsizeMode.END)
+        text_box.pack_start(name, False, False, 0)
+        if subtitle:
+            sub = label(subtitle, "subtitle")
+            sub.set_xalign(0)
+            sub.set_ellipsize(Pango.EllipsizeMode.END)
+            text_box.pack_start(sub, False, False, 0)
+        box.pack_start(text_box, True, True, 0)
+        button.add(box)
+        button.connect("clicked", lambda *_: callback())
+        return button
+
+    def home_files(self):
+        stamp, files = self.files_cache
+        if time.monotonic() - stamp > 30:
+            out = run("fd", "--type", "f", "--base-directory", HOME, "--exclude", "Games", "--exclude", "Steam")
+            files = out.splitlines()
+            self.files_cache = (time.monotonic(), files)
+        return files
+
+    # Hidden icons, like the ^ on Windows.
+    def fill_tray(self, fly):
+        fly.clear()
+        items = list(self.tray.items.values())
+        if not items:
+            fly.box.pack_start(label("No hidden icons", "empty"), False, False, 4)
+        grid = Gtk.FlowBox()
+        grid.set_max_children_per_line(4)
+        grid.set_selection_mode(Gtk.SelectionMode.NONE)
+        for item in items:
+            button = Gtk.Button()
+            button.set_relief(Gtk.ReliefStyle.NONE)
+            button.get_style_context().add_class("tray-icon")
+            button.add(self.tray.icon_widget(item))
+            button.set_tooltip_text(item.get("Title") or "")
+
+            def on_press(widget, event, it=item):
+                if event.button == 3 or it.get("ItemIsMenu"):
+                    self.tray.context_menu(it, widget, event)
+                elif event.button == 1:
+                    self.tray.activate(it)
+                    self.close_flyout()
+                return True
+            button.connect("button-press-event", on_press)
+            grid.add(button)
+        fly.box.pack_start(grid, False, False, 0)
+        fly.show_all()
+
+    def fill_network(self, fly):
+        fly.set_size_request(300, -1)
+        kind, conn = self.network()
+        status = {"ethernet": f"Wired: {conn}", "wifi": f"Wi-Fi: {conn}"}.get(kind, "Not connected")
+        fly.box.pack_start(label("Network", "title"), False, False, 0)
+        status_label = label(status, "status")
+        status_label.set_xalign(0)
+        fly.box.pack_start(status_label, False, False, 0)
+        if "wifi" in run("nmcli", "-t", "-f", "TYPE", "device").split():
+            seen = set()
+            for line in run("nmcli", "-t", "-f", "IN-USE,SSID,SIGNAL", "device", "wifi", "list").splitlines():
+                in_use, ssid, signal = (line.split(":") + ["", "", ""])[:3]
+                if not ssid or ssid in seen:
+                    continue
+                seen.add(ssid)
+                mark = "● " if in_use == "*" else "   "
+                fly.box.pack_start(self.row_button(f"{mark}{ssid}   {signal}%",
+                                                   lambda s=ssid: self.join_wifi(fly, s)), False, False, 0)
+        fly.box.pack_start(Gtk.Separator(), False, False, 0)
+        fly.box.pack_start(self.row_button("Network settings", lambda: (spawn("kitty", "-e", "nmtui"),
+                                                                        self.close_flyout())), False, False, 0)
+
+    def join_wifi(self, fly, ssid):
+        known = ssid in run("nmcli", "-t", "-f", "NAME", "connection", "show").splitlines()
+        if known:
+            spawn("nmcli", "connection", "up", ssid)
+            self.close_flyout()
+            return
+        entry = Gtk.Entry(visibility=False, placeholder_text=f"Password for {ssid}")
+        GtkLayerShell.set_keyboard_mode(fly, GtkLayerShell.KeyboardMode.EXCLUSIVE)
+
+        def connect(*_):
+            spawn("nmcli", "device", "wifi", "connect", ssid, "password", entry.get_text())
+            GtkLayerShell.set_keyboard_mode(fly, GtkLayerShell.KeyboardMode.ON_DEMAND)
+            self.close_flyout()
+        entry.connect("activate", connect)
+        fly.box.pack_start(entry, False, False, 0)
+        fly.show_all()
+        entry.grab_focus()
+
+    def fill_volume(self, fly):
+        fly.set_size_request(320, -1)
+        fly.box.pack_start(label("Volume", "title"), False, False, 0)
+        level, muted = self.volume()
+        row = Gtk.Box(spacing=8)
+        mute = Gtk.ToggleButton(label=ICON_MUTED if muted else ICON_VOLUME[2])
+        mute.set_active(muted)
+        mute.get_style_context().add_class("mute")
+        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
+        scale.set_value(level or 0)
+        scale.set_draw_value(True)
+        scale.set_value_pos(Gtk.PositionType.RIGHT)
+        scale.set_hexpand(True)
+
+        def set_level(s):
+            run("wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", f"{int(s.get_value())}%")
+            self.update_volume()
+
+        def set_mute(b):
+            run("wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "1" if b.get_active() else "0")
+            b.set_label(ICON_MUTED if b.get_active() else ICON_VOLUME[2])
+            self.update_volume()
+        scale.connect("value-changed", set_level)
+        mute.connect("toggled", set_mute)
+        row.pack_start(mute, False, False, 0)
+        row.pack_start(scale, True, True, 0)
+        fly.box.pack_start(row, False, False, 0)
+
+        fly.box.pack_start(label("Output", "section"), False, False, 0)
+        current = run("pactl", "get-default-sink").strip()
+        try:
+            sinks = json.loads(run("pactl", "-f", "json", "list", "sinks") or "[]")
+        except ValueError:
+            sinks = []
+        group = None
+        for sink in sinks:
+            radio = Gtk.RadioButton.new_with_label_from_widget(group, sink.get("description", sink["name"]))
+            group = group or radio
+            radio.set_active(sink["name"] == current)
+            radio.connect("toggled", lambda r, n=sink["name"]: r.get_active() and run("pactl", "set-default-sink", n))
+            fly.box.pack_start(radio, False, False, 0)
+
+    def fill_clock(self, fly):
+        fly.box.pack_start(label(time.strftime("%A, %B %-d"), "title"), False, False, 0)
+        fly.box.pack_start(Gtk.Calendar(), False, False, 0)
+
+    def fill_power(self, fly):
+        fly.set_size_request(220, -1)
+        for text, cmd in (("Lock", ["hyprlock"]), ("Log out", ["labwc", "--exit"]),
+                          ("Restart", ["systemctl", "reboot"]), ("Shut down", ["systemctl", "poweroff"])):
+            fly.box.pack_start(self.row_button(text, lambda c=cmd: (self.close_flyout(), spawn(*c))),
+                               False, False, 0)
+
+
+# --- Desktop Recycle Bin ----------------------------------------------------
+
+class Desktop(Gtk.Window):
+    """The Recycle Bin icon, top left of the desktop, under all windows."""
+
+    def __init__(self, app):
+        super().__init__(application=app)
+        make_layer(self, GtkLayerShell.Layer.BOTTOM, [GtkLayerShell.Edge.TOP, GtkLayerShell.Edge.LEFT],
+                   namespace="skornex-desktop")
+        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.TOP, 16)
+        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.LEFT, 16)
+        make_transparent(self)
+        self.get_style_context().add_class("desktop")
+        self.icon = Gtk.EventBox()
+        self.icon.get_style_context().add_class("desktop-icon")
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        self.image = Gtk.Image()
+        box.pack_start(self.image, False, False, 0)
+        box.pack_start(label("Recycle Bin", "desktop-label"), False, False, 0)
+        self.icon.add(box)
+        self.icon.connect("button-press-event", self.on_press)
+        self.add(self.icon)
+        self.update()
+        GLib.timeout_add_seconds(3, self.update)
+        self.show_all()
+
+    def count(self):
+        try:
+            info = Gio.File.new_for_uri("trash:///").query_info("trash::item-count", Gio.FileQueryInfoFlags.NONE, None)
+            return info.get_attribute_uint32("trash::item-count")
+        except GLib.Error:
+            return 0
+
+    def update(self):
+        name = "user-trash-full" if self.count() else "user-trash"
+        self.image.set_from_icon_name(name, Gtk.IconSize.DIALOG)
+        self.image.set_pixel_size(48)
+        return True
+
+    def on_press(self, _w, event):
+        if event.type == DOUBLE_CLICK and event.button == 1:
+            spawn("nemo", "trash:///")
+        elif event.button == 3:
+            menu = Gtk.Menu()
+            for text, callback in (("Open", lambda: spawn("nemo", "trash:///")),
+                                   ("Empty Recycle Bin", self.confirm_empty)):
+                item = Gtk.MenuItem(label=text)
+                item.connect("activate", lambda _i, c=callback: c())
+                menu.append(item)
+            menu.show_all()
+            menu.attach_to_widget(self.icon, None)
+            menu.popup_at_pointer(event)
+        return True
+
+    def confirm_empty(self):
+        n = self.count()
+        if not n:
+            return
+        dialog = Gtk.MessageDialog(message_type=Gtk.MessageType.WARNING, buttons=Gtk.ButtonsType.NONE,
+                                   text="Empty the Recycle Bin?")
+        dialog.format_secondary_text(f"{n} item{'s' if n != 1 else ''} will be deleted for good.")
+        dialog.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Empty", Gtk.ResponseType.OK)
+        if dialog.run() == Gtk.ResponseType.OK:
+            run("gio", "trash", "--empty")
+        dialog.destroy()
+        self.update()
+
+
+# --- Start up ---------------------------------------------------------------
+
+class SkorneXBar(Gtk.Application):
+    def __init__(self):
+        super().__init__(application_id="dev.skornex.Bar", flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
+        self.bar = None
+
+    def do_startup(self):
+        Gtk.Application.do_startup(self)
+        settings = Gtk.Settings.get_default()
+        settings.props.gtk_icon_theme_name = "Papirus-Dark"
+        settings.props.gtk_application_prefer_dark_theme = True
+        css = Gtk.CssProvider()
+        try:
+            css.load_from_path(STYLE_FILE)
+        except GLib.Error as e:
+            print(f"skornex-bar: no style ({e.message}); run skornex-theme", file=sys.stderr)
+        Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), css,
+                                                 Gtk.STYLE_PROVIDER_PRIORITY_USER)
+        self.hold()
+
+    def do_command_line(self, command_line):
+        args = command_line.get_arguments()[1:]
+        if self.bar is None:
+            self.bar = Bar(self)
+            self.desktop = Desktop(self)
+        if args and args[0] in ("search", "power"):
+            self.bar.toggle(args[0])
+        return 0
+
+
+if __name__ == "__main__":
+    sys.exit(SkorneXBar().run(sys.argv))

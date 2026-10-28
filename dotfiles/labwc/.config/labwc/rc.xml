@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!--
   labwc settings. Windows float like on Windows; drag one to a screen edge
-  or corner to snap it. Colors live in themerc-override, made by rice-theme.
+  or corner to snap it. Colors live in themerc-override, made by skornex-theme.
   All options: man 5 labwc-config. All actions: man 5 labwc-actions.
   Save this file, then press Win+Shift+R (or run `labwc -r`) to reload.
 -->
@@ -48,13 +48,13 @@
   <keyboard>
     <numlock>on</numlock>
 
-    <!-- Windows key alone: app launcher. -->
+    <!-- Windows key alone: the search (apps and files), like the Start menu. -->
     <keybind key="Super_L" onRelease="yes">
-      <action name="Execute" command="~/.local/bin/launcher" />
+      <action name="Execute" command="~/.local/bin/skornex-bar search" />
     </keybind>
-    <!-- Ctrl+Space: search apps and files, like Spotlight. -->
+    <!-- Ctrl+Space: the same search, like Spotlight. -->
     <keybind key="C-space">
-      <action name="Execute" command="~/.local/bin/spotlight" />
+      <action name="Execute" command="~/.local/bin/skornex-bar search" />
     </keybind>
     <keybind key="W-r">
       <action name="Execute" command="rofi -show run" />
@@ -72,29 +72,29 @@
       <action name="Execute" command="sh -c 'cliphist list | rofi -dmenu -p Clipboard | cliphist decode | wl-copy'" />
     </keybind>
 
-    <!-- Our own small tools in ~/.local/bin. -->
+    <!-- SkorneX tools in ~/.local/bin. -->
     <keybind key="C-S-Escape">
-      <action name="Execute" command="~/.local/bin/force-quit" />
+      <action name="Execute" command="~/.local/bin/skornex-forcequit" />
     </keybind>
     <keybind key="C-A-Delete">
-      <action name="Execute" command="~/.local/bin/power-menu" />
+      <action name="Execute" command="~/.local/bin/skornex-bar power" />
     </keybind>
 
     <!-- Screenshots, straight to the clipboard. Win+Print saves a file. -->
     <keybind key="Print">
-      <action name="Execute" command="~/.local/bin/screenshot region" />
+      <action name="Execute" command="~/.local/bin/skornex-screenshot region" />
     </keybind>
     <keybind key="W-S-s">
-      <action name="Execute" command="~/.local/bin/screenshot region" />
+      <action name="Execute" command="~/.local/bin/skornex-screenshot region" />
     </keybind>
     <keybind key="A-Print">
-      <action name="Execute" command="~/.local/bin/screenshot region" />
+      <action name="Execute" command="~/.local/bin/skornex-screenshot region" />
     </keybind>
     <keybind key="S-Print">
-      <action name="Execute" command="~/.local/bin/screenshot full" />
+      <action name="Execute" command="~/.local/bin/skornex-screenshot full" />
     </keybind>
     <keybind key="W-Print">
-      <action name="Execute" command="~/.local/bin/screenshot save" />
+      <action name="Execute" command="~/.local/bin/skornex-screenshot save" />
     </keybind>
 
     <!-- Windows. -->

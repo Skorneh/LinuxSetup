@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Ctrl+Shift+Esc: a Mac-style Force Quit list.
+# skornex-forcequit (Ctrl+Shift+Esc): a Mac-style Force Quit list.
 # Shows each open app with its memory use. Pick one, confirm, and it's gone.
 
 # Background pieces of the desktop itself, never listed.
-skip='^(labwc|waybar|dunst|swaybg|swayidle|hyprlock|rofi|wl-paste|polkit-gnome-au|Xwayland|xdg-desktop-por|pipewire|wireplumber|force-quit)$'
+skip='^(labwc|skornex-bar|dunst|swaybg|swayidle|hyprlock|rofi|wl-paste|polkit-gnome-au|Xwayland|xdg-desktop-por|pipewire|wireplumber|skornex-forceq)$'
 
 # An "app" is a process with a window connection whose parent isn't one.
 # Its memory includes all its child processes (Firefox tabs, game, etc.).

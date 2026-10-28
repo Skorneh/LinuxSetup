@@ -57,8 +57,7 @@ find "$HOME/.config" "$HOME/.local" -xtype l -lname '*LinuxSetup/dotfiles/*' -de
 
 # --- 5. Colors ---
 info "Applying colors..."
-"$HOME/.local/bin/rice-theme"
-"$HOME/.local/bin/taskbar-pins" refresh
+"$HOME/.local/bin/skornex-theme"
 
 # --- 6. Boot straight to the lock screen ---
 # greetd logs you in once at boot and starts labwc with LOCK_ON_START set, so

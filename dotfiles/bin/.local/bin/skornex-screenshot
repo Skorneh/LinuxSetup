@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# screenshot region  drag a box, copy to clipboard
-# screenshot full    whole screen, copy to clipboard
-# screenshot save    whole screen, saved to ~/Pictures/Screenshots
+# skornex-screenshot region  drag a box, copy to clipboard
+# skornex-screenshot full    whole screen, copy to clipboard
+# skornex-screenshot save    whole screen, saved to ~/Pictures/Screenshots
 case "${1:-region}" in
     region)
         area="$(slurp)" || exit 0

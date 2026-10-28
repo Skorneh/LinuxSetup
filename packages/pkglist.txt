@@ -18,7 +18,6 @@ greetd
 
 # --- Window manager and the pieces around it ---
 labwc
-waybar
 rofi
 kitty
 dunst
@@ -29,6 +28,13 @@ swayidle
 polkit-gnome
 xdg-desktop-portal-wlr
 xdg-desktop-portal-gtk
+
+# --- SkorneXBar (the taskbar) ---
+python-gobject
+gtk3
+gtk-layer-shell
+libxfce4windowing
+libdbusmenu-gtk3
 
 # --- Clipboard and screenshots ---
 wl-clipboard

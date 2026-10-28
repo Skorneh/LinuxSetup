@@ -1,5 +1,5 @@
 # Your colors: Graphite. Hex values without the leading #.
-# Change any value, then run `rice-theme` to apply it everywhere.
+# Change any value, then run `skornex-theme` to apply it everywhere.
 
 BG=0b0b0c        # background: desktop, taskbar, lock screen, terminal
 SURFACE=1c1c1f   # raised things: active title bar, search box, menus
