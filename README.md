@@ -14,7 +14,7 @@ tool I own.
 | `install.sh` | Installs everything, links the configs, applies the colors, sets up booting straight to the lock screen, debloats Firefox. Adds the guest agent in a Proxmox VM. |
 | `gaming.sh` | Real PC only: enables `[multilib]`, detects your GPU and installs drivers, then Steam, Lutris, GameMode, MangoHud. |
 | `packages/` | Package lists: `pkglist.txt` (official repos), `aurlist.txt` (AUR), `gaming.txt`, and `removelist.txt` (old packages to remove). |
-| `dotfiles/apps/` | App list tweaks: kitty shown as Terminal, Mousepad as Notepad, Drawing as Paint, Task Manager added, and two broken webcam test tools (from ffmpeg) hidden. |
+| `dotfiles/apps/` | App list tweaks: kitty shown as Terminal, Mousepad as Notepad, Paint and Task Manager added, and two broken webcam test tools (from ffmpeg) hidden. |
 | `dotfiles/` | Config files, linked into `~` with GNU Stow. Each folder mirrors your home folder. |
 | `dotfiles/skornex/.config/skornex/colors` | **The one file with all the colors.** |
 | `dotfiles/skornex/.config/skornex/pins` | Apps pinned to the taskbar. |
@@ -32,6 +32,7 @@ All scripts are safe to run more than once.
 | `skornex-bar` (**SkorneXBar**) | Starts with the desktop | The taskbar. See below. |
 | `skornex-desktop` (**SkorneXDesktop**) | Starts with the desktop | Desktop icons: the Recycle Bin plus everything in `~/Desktop`. Drag them anywhere (they snap to a grid and stay put), double-click to open, right-click for options. Add app shortcuts from the taskbar's right-click menu. |
 | `skornex-taskmgr` (**Task Manager**) | Ctrl+Shift+Esc, or search "Task Manager" | Apps and background processes with CPU and memory. Select one and press End task (or right-click it). |
+| `skornex-paint` (**Paint**) | Search "Paint" | Works like Microsoft Paint: take a screenshot, open Paint, Ctrl+V, drag it into place, draw on it, Ctrl+S. Pencil, brush, fill, text, eraser, color picker, shapes, crop, resize and rotate, left click for Color 1 and right click for Color 2. Saves PNG, JPEG or BMP. |
 | `skornex-theme` | Run it in a terminal | Applies the colors file everywhere. |
 | `skornex-screenshot` | Print Screen keys | Region or full screen to the clipboard, or save to a file. |
 
@@ -64,8 +65,6 @@ Works like the Windows taskbar:
 - **Terminal:** kitty, shown as Terminal (Ctrl+Alt+T).
 - **Notepad:** Mousepad, shown as Notepad. Tabs, line numbers and syntax
   colors; opens `.sh`, `.md` and other text files when you double-click them.
-- **Paint:** Drawing, shown as Paint. Open it and press Ctrl+V to paste a
-  screenshot and mark it up.
 - **Firefox** (debloated), **Discord**.
 - **Xwayland** runs older X11 apps (Steam, Wine games) inside labwc.
 

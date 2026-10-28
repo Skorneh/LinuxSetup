@@ -1,0 +1,13 @@
+[Desktop Entry]
+# Named after the window's app ID (dev.skornex.Paint) so the taskbar can
+# match the open window to this entry and show its icon.
+# SkorneX Paint (skornex-paint).
+Type=Application
+Name=Paint
+Comment=Draw, and paste screenshots to mark them up
+Exec=skornex-paint %F
+StartupWMClass=dev.skornex.Paint
+Icon=skornex-paint
+Categories=Graphics;
+Keywords=paint;draw;drawing;picture;image;screenshot;mspaint;
+MimeType=image/png;image/jpeg;image/bmp;

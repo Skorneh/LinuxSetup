@@ -58,7 +58,6 @@ dconf
 nemo
 gvfs
 mousepad
-drawing
 firefox
 discord
 
