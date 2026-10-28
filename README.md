@@ -30,7 +30,7 @@ All scripts are safe to run more than once.
 | Tool | Opens with | Does |
 |---|---|---|
 | `skornex-bar` (**SkorneXBar**) | Starts with the desktop | The taskbar. See below. |
-| `skornex-desktop` (**SkorneXDesktop**) | Starts with the desktop | Desktop icons: the Recycle Bin plus everything in `~/Desktop`. Double-click to open, right-click for options. Add app shortcuts from the taskbar's right-click menu. |
+| `skornex-desktop` (**SkorneXDesktop**) | Starts with the desktop | Desktop icons: the Recycle Bin plus everything in `~/Desktop`. Drag them anywhere (they snap to a grid and stay put), double-click to open, right-click for options. Add app shortcuts from the taskbar's right-click menu. |
 | `skornex-theme` | Run it in a terminal | Applies the colors file everywhere. |
 | `skornex-forcequit` | Ctrl+Shift+Esc | Lists open apps with memory use. Pick one, confirm, it's closed. |
 | `skornex-screenshot` | Print Screen keys | Region or full screen to the clipboard, or save to a file. |

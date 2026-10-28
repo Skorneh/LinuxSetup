@@ -185,31 +185,23 @@ def write_pins(pins):
 
 # --- Taskbar app buttons ----------------------------------------------------
 
-class AppButton(Gtk.EventBox):
-    """One app on the taskbar: pinned, open, or both.
-
-    Built from a plain event box rather than a GTK button, because GTK buttons
-    keep the mouse to themselves and that breaks dragging."""
+class AppButton(Gtk.Button):
+    """One app on the taskbar: pinned, open, or both."""
 
     def __init__(self, bar, key, info):
         super().__init__()
         self.bar, self.key, self.info = bar, key, info
         self.windows = []
+        self.set_relief(Gtk.ReliefStyle.NONE)
+        self.set_can_focus(False)
         self.get_style_context().add_class("app")
         self.image = Gtk.Image()
-        self.image.set_margin_start(8)
-        self.image.set_margin_end(8)
         self.add(self.image)
         self.set_icon()
-        self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK
-                        | Gdk.EventMask.POINTER_MOTION_MASK | Gdk.EventMask.ENTER_NOTIFY_MASK
-                        | Gdk.EventMask.LEAVE_NOTIFY_MASK)
+        self.add_events(Gdk.EventMask.BUTTON_MOTION_MASK)
         self.connect("button-press-event", self.on_press)
         self.connect("motion-notify-event", self.on_motion)
         self.connect("button-release-event", self.on_release)
-        # Hover look (the :hover style), since event boxes don't track it themselves.
-        self.connect("enter-notify-event", lambda *_: self.set_state_flags(Gtk.StateFlags.PRELIGHT, False))
-        self.connect("leave-notify-event", lambda *_: self.unset_state_flags(Gtk.StateFlags.PRELIGHT))
         self.press_x = None
         self.dragging = False
 
@@ -292,7 +284,6 @@ class AppButton(Gtk.EventBox):
             return False
         if not self.dragging and abs(event.x - self.press_x) > 8:
             self.dragging = True
-            self.bar.dragging = True        # the bar holds still while you drag
             self.get_style_context().add_class("dragging")
         if self.dragging:
             box = self.get_parent()
@@ -308,14 +299,12 @@ class AppButton(Gtk.EventBox):
         elif event.button == 1 and self.press_x is not None:
             if self.dragging:
                 self.get_style_context().remove_class("dragging")
-                self.bar.dragging = False
                 self.bar.reordered()
             else:
                 self.click()
         self.press_x = None
         self.dragging = False
-        self.bar.dragging = False
-        return True
+        return False
 
 
 # --- Tray (hidden icons): StatusNotifierItem host and watcher ---------------
@@ -554,7 +543,6 @@ class Bar(Gtk.Window):
         self.screen = Xfw.Screen.get_default()
         self.closed = set()
         self.sync_pending = False
-        self.dragging = False
         self.screen.connect("window-opened", lambda _s, w: self.watch_window(w))
         self.screen.connect("window-closed", lambda _s, w: self.on_window_closed(w))
         self.screen.connect("active-window-changed", self.on_active_changed)
@@ -642,7 +630,7 @@ class Bar(Gtk.Window):
             if not button.info:
                 button.set_icon()
             button.update_look()
-            if not self.dragging:
+            if not button.dragging:
                 self.taskbar.reorder_child(button, index)
         return False
 
@@ -995,11 +983,18 @@ def add_to_desktop(info):
     os.chmod(target, 0o755)
 
 
-class DesktopIcon(Gtk.EventBox):
-    """One icon on the desktop: picture, name, double-click to open."""
+POSITIONS_FILE = os.path.join(CONFIG, "desktop.json")
+CELL_W, CELL_H = 96, 100      # the desktop grid, like Windows' icon spacing
+GRID_MARGIN = 12
 
-    def __init__(self, name, icon, open_it, menu_items):
+
+class DesktopIcon(Gtk.EventBox):
+    """One icon on the desktop: picture and name. Click to select, double-click
+    to open, drag to move, right-click for options."""
+
+    def __init__(self, desktop, key, name, icon, open_it, menu_items):
         super().__init__()
+        self.desktop, self.key = desktop, key
         self.open_it, self.menu_items = open_it, menu_items
         self.get_style_context().add_class("desktop-icon")
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
@@ -1014,8 +1009,17 @@ class DesktopIcon(Gtk.EventBox):
         text.set_justify(Gtk.Justification.CENTER)
         box.pack_start(text, False, False, 0)
         self.add(box)
-        self.set_size_request(92, -1)
+        self.set_size_request(CELL_W - 8, -1)
+        self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK
+                        | Gdk.EventMask.POINTER_MOTION_MASK | Gdk.EventMask.ENTER_NOTIFY_MASK
+                        | Gdk.EventMask.LEAVE_NOTIFY_MASK)
         self.connect("button-press-event", self.on_press)
+        self.connect("motion-notify-event", self.on_motion)
+        self.connect("button-release-event", self.on_release)
+        self.connect("enter-notify-event", lambda *_: self.set_state_flags(Gtk.StateFlags.PRELIGHT, False))
+        self.connect("leave-notify-event", lambda *_: self.unset_state_flags(Gtk.StateFlags.PRELIGHT))
+        self.grab = None        # where in the icon you grabbed it
+        self.dragging = False
 
     def set_icon(self, icon):
         if isinstance(icon, str):
@@ -1025,8 +1029,13 @@ class DesktopIcon(Gtk.EventBox):
         self.image.set_pixel_size(48)
 
     def on_press(self, _w, event):
+        self.desktop.select(self)
         if event.type == DOUBLE_CLICK and event.button == 1:
+            self.grab = None
             self.open_it()
+        elif event.button == 1:
+            self.grab = (event.x, event.y)
+            self.dragging = False
         elif event.button == 3:
             menu = Gtk.Menu()
             for text, callback in self.menu_items:
@@ -1038,63 +1047,184 @@ class DesktopIcon(Gtk.EventBox):
             menu.popup_at_pointer(event)
         return True
 
+    def pointer(self, event):
+        """Where the mouse is, in desktop coordinates."""
+        return self.translate_coordinates(self.desktop.fixed, int(event.x), int(event.y))
+
+    def on_motion(self, _w, event):
+        if self.grab is None:
+            return False
+        if not self.dragging and (abs(event.x - self.grab[0]) > 6 or abs(event.y - self.grab[1]) > 6):
+            self.dragging = True
+            self.get_style_context().add_class("dragging")
+        if self.dragging:
+            x, y = self.pointer(event)
+            self.desktop.fixed.move(self, max(0, x - int(self.grab[0])), max(0, y - int(self.grab[1])))
+        return True
+
+    def on_release(self, _w, event):
+        if self.dragging:
+            x, y = self.pointer(event)
+            self.get_style_context().remove_class("dragging")
+            self.desktop.drop(self, x - self.grab[0] + CELL_W / 2, y - self.grab[1] + CELL_H / 2)
+        self.grab = None
+        self.dragging = False
+        return True
+
 
 class Desktop(Gtk.Window):
-    """Desktop icons, top left, under all windows: the Recycle Bin, then
-    everything in ~/Desktop (files, folders, app shortcuts), like Windows.
-    Right-click a taskbar app and pick "Add to desktop" to add a shortcut."""
+    """Desktop icons, under all windows: the Recycle Bin plus everything in
+    ~/Desktop (files, folders, app shortcuts), like Windows. Drag icons
+    anywhere; they snap to a grid and stay where you put them. Right-click a
+    taskbar app and pick "Add to desktop" to add a shortcut."""
 
     def __init__(self, app):
         super().__init__(application=app)
-        make_layer(self, GtkLayerShell.Layer.BOTTOM, [GtkLayerShell.Edge.TOP, GtkLayerShell.Edge.LEFT],
+        # The whole screen (minus the taskbar), so icons can go anywhere.
+        make_layer(self, GtkLayerShell.Layer.BOTTOM,
+                   [GtkLayerShell.Edge.TOP, GtkLayerShell.Edge.BOTTOM,
+                    GtkLayerShell.Edge.LEFT, GtkLayerShell.Edge.RIGHT],
                    namespace="skornex-desktop")
-        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.TOP, 12)
-        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.LEFT, 12)
         make_transparent(self)
         self.get_style_context().add_class("desktop")
-        self.grid = Gtk.FlowBox()
-        self.grid.set_orientation(Gtk.Orientation.VERTICAL)   # fill a column, then the next, like Windows
-        self.grid.set_selection_mode(Gtk.SelectionMode.NONE)
-        self.grid.set_max_children_per_line(7)
-        self.grid.set_row_spacing(6)
-        self.grid.set_column_spacing(6)
-        self.add(self.grid)
+        # Clicking empty desktop clears the selection.
+        background = Gtk.EventBox()
+        background.set_visible_window(False)
+        background.connect("button-press-event", lambda *_: self.select(None))
+        self.fixed = Gtk.Fixed()
+        background.add(self.fixed)
+        self.add(background)
 
-        self.trash = DesktopIcon("Recycle Bin", "user-trash", lambda: spawn("nemo", "trash:///"),
+        self.icons = {}
+        self.selected = None
+        self.positions = self.load_positions()
+        self.trash = DesktopIcon(self, "::trash", "Recycle Bin", "user-trash",
+                                 lambda: spawn("nemo", "trash:///"),
                                  [("Open", lambda: spawn("nemo", "trash:///")),
                                   ("Empty Recycle Bin", self.confirm_empty)])
         os.makedirs(DESKTOP_DIR, exist_ok=True)
         self.monitor = Gio.File.new_for_path(DESKTOP_DIR).monitor_directory(Gio.FileMonitorFlags.NONE, None)
         self.monitor.connect("changed", lambda *_: GLib.idle_add(self.refresh))
+        self.screen_size = None
+        self.connect("size-allocate", self.on_size)
         self.refresh()
         self.update_trash()
         GLib.timeout_add_seconds(3, self.update_trash)
         self.show_all()
         print("SkorneXDesktop started", file=sys.stderr, flush=True)
 
-    def refresh(self):
-        for child in self.grid.get_children():
-            box = child.get_child()
-            child.remove(box)
-            self.grid.remove(child)
-        self.grid.add(self.trash)
+    # --- Saved positions: {"name": [column, row]} ---
+
+    @staticmethod
+    def load_positions():
         try:
-            names = sorted(os.listdir(DESKTOP_DIR), key=str.casefold)
+            with open(POSITIONS_FILE) as f:
+                return {k: tuple(v) for k, v in json.load(f).items()}
+        except (OSError, ValueError):
+            return {}
+
+    def save_positions(self):
+        os.makedirs(CONFIG, exist_ok=True)
+        with open(POSITIONS_FILE, "w") as f:
+            json.dump({k: list(v) for k, v in self.positions.items()}, f, indent=1)
+
+    def grid_size(self):
+        width, height = self.screen_size
+        cols = max(1, (width - GRID_MARGIN) // CELL_W)
+        rows = max(1, (height - GRID_MARGIN) // CELL_H)
+        return cols, rows
+
+    def free_cell(self, taken):
+        """The first empty spot, top to bottom then left to right, like Windows."""
+        cols, rows = self.grid_size()
+        for col in range(cols):
+            for row in range(rows):
+                if (col, row) not in taken:
+                    return col, row
+        return 0, 0
+
+    def on_size(self, _w, alloc):
+        # Only when the screen size actually changes (moving icons also
+        # reports a size, and reacting to that would loop forever).
+        size = (alloc.width, alloc.height)
+        if size != self.screen_size:
+            self.screen_size = size
+            self.layout()
+
+    def layout(self):
+        """Put every icon in its saved spot; new ones go in the first free spot."""
+        if not self.screen_size or self.screen_size[0] < CELL_W:
+            return      # not on screen yet; this runs again once it is
+        taken = {}
+        for key in self.icons:
+            pos = self.positions.get(key)
+            if pos and pos not in taken.values():
+                taken[key] = pos
+        changed = False
+        for key in self.icons:
+            if key not in taken:
+                taken[key] = self.free_cell(set(taken.values()))
+                changed = True
+        for key, icon in self.icons.items():
+            col, row = taken[key]
+            x, y = GRID_MARGIN + col * CELL_W, GRID_MARGIN + row * CELL_H
+            if (self.fixed.child_get_property(icon, "x"), self.fixed.child_get_property(icon, "y")) != (x, y):
+                self.fixed.move(icon, x, y)
+        if changed or taken != self.positions:
+            self.positions = {k: v for k, v in taken.items()}
+            self.save_positions()
+
+    def drop(self, icon, x, y):
+        """An icon was dragged here: snap to the nearest grid spot. If another
+        icon is there, they swap places."""
+        cols, rows = self.grid_size()
+        col = min(cols - 1, max(0, int((x - GRID_MARGIN) // CELL_W)))
+        row = min(rows - 1, max(0, int((y - GRID_MARGIN) // CELL_H)))
+        old = self.positions.get(icon.key)
+        for key, pos in self.positions.items():
+            if pos == (col, row) and key != icon.key and old:
+                self.positions[key] = old
+        self.positions[icon.key] = (col, row)
+        self.save_positions()
+        self.layout()
+
+    def select(self, icon):
+        if self.selected and self.selected is not icon:
+            self.selected.get_style_context().remove_class("selected")
+        self.selected = icon
+        if icon:
+            icon.get_style_context().add_class("selected")
+        return False
+
+    # --- What's on the desktop ---
+
+    def refresh(self):
+        wanted = {"::trash": None}
+        try:
+            names = sorted(n for n in os.listdir(DESKTOP_DIR) if not n.startswith("."))
         except OSError:
             names = []
         for name in names:
-            if name.startswith("."):
-                continue
-            self.grid.add(self.make_icon(os.path.join(DESKTOP_DIR, name)))
-        self.grid.show_all()
+            wanted[name] = os.path.join(DESKTOP_DIR, name)
+        for key in list(self.icons):
+            if key not in wanted:
+                self.fixed.remove(self.icons.pop(key))
+                self.positions.pop(key, None)
+        for key, path in wanted.items():
+            if key not in self.icons:
+                icon = self.trash if key == "::trash" else self.make_icon(key, path)
+                self.icons[key] = icon
+                self.fixed.put(icon, 0, 0)
+        self.fixed.show_all()
+        self.layout()
         return False
 
-    def make_icon(self, path):
+    def make_icon(self, key, path):
         gfile = Gio.File.new_for_path(path)
         if path.endswith(".desktop"):
             info = Gio.DesktopAppInfo.new_from_filename(path)
             if info:
-                return DesktopIcon(info.get_display_name(), info.get_icon(),
+                return DesktopIcon(self, key, info.get_display_name(), info.get_icon(),
                                    lambda: spawn("gio", "launch", path),
                                    [("Open", lambda: spawn("gio", "launch", path)),
                                     ("Remove from desktop", lambda: self.remove_file(gfile))])
@@ -1102,7 +1232,7 @@ class Desktop(Gtk.Window):
             icon = gfile.query_info("standard::icon", Gio.FileQueryInfoFlags.NONE, None).get_icon()
         except GLib.Error:
             icon = "text-x-generic"
-        return DesktopIcon(os.path.basename(path), icon, lambda: spawn("xdg-open", path),
+        return DesktopIcon(self, key, os.path.basename(path), icon, lambda: spawn("xdg-open", path),
                            [("Open", lambda: spawn("xdg-open", path)),
                             ("Show in Files", lambda: spawn("nemo", DESKTOP_DIR)),
                             ("Delete", lambda: self.remove_file(gfile))])
