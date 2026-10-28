@@ -5,14 +5,21 @@
 [ -n "$LOCK_ON_START" ] && hyprlock &
 
 swaybg -c "#$(. ~/.config/skornex/colors; echo "$BG")" >/dev/null 2>&1 &
-# SkorneXBar: taskbar and desktop Recycle Bin. If it ever crashes it starts
-# again a second later, and the error is saved in ~/.cache/skornex-bar.log.
+# SkorneXBar (taskbar) and SkorneXDesktop (Recycle Bin). If either ever
+# crashes it starts again a second later, and what went wrong is saved in
+# ~/.cache/skornex-bar.log or ~/.cache/skornex-desktop.log.
 mkdir -p ~/.cache
-(while kill -0 "$LABWC_PID" 2>/dev/null; do
-    echo "--- $(date) starting" >> ~/.cache/skornex-bar.log
-    ~/.local/bin/skornex-bar >> ~/.cache/skornex-bar.log 2>&1
-    sleep 1
-done) &
+keep_running() {
+    log=~/.cache/$1.log
+    (while kill -0 "$LABWC_PID" 2>/dev/null; do
+        echo "--- $(date) starting" >> "$log"
+        ~/.local/bin/"$1" >> "$log" 2>&1
+        echo "--- stopped (exit code $?)" >> "$log"
+        sleep 1
+    done) &
+}
+keep_running skornex-bar
+keep_running skornex-desktop
 dunst >/dev/null 2>&1 &
 /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 >/dev/null 2>&1 &
 wl-paste --type text --watch cliphist store >/dev/null 2>&1 &

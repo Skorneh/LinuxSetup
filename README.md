@@ -28,7 +28,8 @@ All scripts are safe to run more than once.
 
 | Tool | Opens with | Does |
 |---|---|---|
-| `skornex-bar` (**SkorneXBar**) | Starts with the desktop | The taskbar and the desktop Recycle Bin. See below. |
+| `skornex-bar` (**SkorneXBar**) | Starts with the desktop | The taskbar. See below. |
+| `skornex-desktop` (**SkorneXDesktop**) | Starts with the desktop | The Recycle Bin on the desktop: double-click to open, right-click to empty. |
 | `skornex-theme` | Run it in a terminal | Applies the colors file everywhere. |
 | `skornex-forcequit` | Ctrl+Shift+Esc | Lists open apps with memory use. Pick one, confirm, it's closed. |
 | `skornex-screenshot` | Print Screen keys | Region or full screen to the clipboard, or save to a file. |
@@ -47,14 +48,13 @@ Works like the Windows taskbar:
   - Right-click: **Pin to taskbar** / **Unpin from taskbar**, new window,
     close.
   - Drag a button left or right to reorder. Pinned order is saved.
-- **^**: hidden icons (Discord, Steam…) in a small pop-up. Click one to open
-  it, right-click for its menu.
+- **^**: hidden icons in a small pop-up. Apps that have a tray icon (Discord,
+  Steam…) put it here while they're running, including after you close their
+  window. Click one to open the app, right-click for its menu.
 - **Network, volume, clock, power**: each opens a small panel in the
   bottom-right corner. Click the button again, click anywhere else, or press
   Esc to close it. Volume has a slider and the output list (speakers,
   headset…); scrolling on the volume changes it.
-- **Recycle Bin** on the desktop, top left: double-click to open, right-click
-  to empty.
 
 ## Colors
 
@@ -148,8 +148,9 @@ Firefox and Nemo on their own.
   in the repo, then run `skornex-theme`. The file in `~/.config` gets overwritten.
 - **Change SkorneXBar:** edit `dotfiles/bin/.local/bin/skornex-bar` (Python),
   then run `pkill -f skornex-bar`. It restarts by itself a second later.
-- **SkorneXBar crashed or acts up?** It restarts by itself. The error is in
-  `~/.cache/skornex-bar.log` (`tail -50 ~/.cache/skornex-bar.log`).
+- **SkorneXBar or SkorneXDesktop crashed?** They restart by themselves. What
+  went wrong is in `~/.cache/skornex-bar.log` or `~/.cache/skornex-desktop.log`
+  (`tail -50 ~/.cache/skornex-bar.log`).
 - **Add a new config file to the repo:** move it into the matching place under
   `dotfiles/<name>/`, then run `./install.sh` again to link it.
 - **Installed something new?** Run `pkgcheck` to see what isn't tracked, and

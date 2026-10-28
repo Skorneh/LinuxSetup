@@ -1,0 +1,5 @@
+#!/bin/sh
+# SkorneXDesktop: the Recycle Bin on the desktop. labwc doesn't draw desktop
+# icons, so this small program does. It shares code with SkorneXBar but runs
+# on its own, so if one crashes the other keeps going.
+exec "$(dirname "$0")/skornex-bar" desktop "$@"

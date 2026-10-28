@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """SkorneXBar: the SkorneX taskbar and the desktop Recycle Bin.
 
-    skornex-bar          start it (labwc's autostart does this)
+    skornex-bar          start the taskbar (labwc's autostart does this)
     skornex-bar search   open or close the search (Windows key, Ctrl+Space)
     skornex-bar power    open or close the power menu (Ctrl+Alt+Delete)
+    skornex-bar desktop  start SkorneXDesktop, the Recycle Bin on the desktop.
+                         It's a separate program, so if one crashes the other
+                         keeps going (autostart runs it as skornex-desktop).
 
 Works like the Windows taskbar:
   - Search box on the left. Apps and files from your home folder.
@@ -21,6 +24,7 @@ Pinned apps are in ~/.config/skornex/pins. Colors come from
 ~/.config/skornex/style.css, made by skornex-theme.
 """
 
+import faulthandler
 import json
 import os
 import subprocess
@@ -29,7 +33,11 @@ import time
 
 import gi
 
+# If the bar ever crashes hard, print where (it lands in ~/.cache/skornex-bar.log).
+faulthandler.enable()
+
 gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
 gi.require_version("GtkLayerShell", "0.1")
 gi.require_version("Libxfce4windowing", "0.0")
 from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk, GtkLayerShell, Pango  # noqa: E402
@@ -153,12 +161,10 @@ class Apps:
         return None
 
     def launch(self, app_id):
-        info = self.by_id.get(app_id)
-        if info:
-            try:
-                info.launch([], None)
-            except GLib.Error:
-                pass
+        # gtk-launch starts the app as its own program, not a child of the
+        # bar, so apps and the bar can't take each other down.
+        if app_id in self.by_id:
+            spawn("gtk-launch", app_id)
 
 
 def read_pins():
@@ -211,6 +217,7 @@ class AppButton(Gtk.Button):
 
     def update_look(self):
         ctx = self.get_style_context()
+        self.windows = [w for w in self.windows if w not in self.bar.closed]
         running = bool(self.windows)
         active = any(w.is_active() for w in self.windows)
         for cls, on in (("open", running), ("active", active), ("closed", not running)):
@@ -533,8 +540,10 @@ class Bar(Gtk.Window):
 
         # Windows.
         self.screen = Xfw.Screen.get_default()
+        self.closed = set()
+        self.sync_pending = False
         self.screen.connect("window-opened", lambda _s, w: self.watch_window(w))
-        self.screen.connect("window-closed", lambda *_: GLib.idle_add(self.sync))
+        self.screen.connect("window-closed", lambda _s, w: self.on_window_closed(w))
         self.screen.connect("active-window-changed", self.on_active_changed)
         for w in self.screen.get_windows():
             self.watch_window(w)
@@ -560,17 +569,29 @@ class Bar(Gtk.Window):
 
     # --- Window tracking and app buttons ---
 
+    # Window changes are handled a moment later, never in the middle of the
+    # window library's own update; a closed window is never touched again.
     def watch_window(self, window):
         for sig in ("state-changed", "class-changed", "name-changed", "icon-changed"):
-            window.connect(sig, lambda *_: self.sync())
-        self.sync()
+            window.connect(sig, lambda *_: self.schedule_sync())
+        window.connect("closed", self.on_window_closed)
+        self.schedule_sync()
+
+    def on_window_closed(self, window, *_):
+        self.closed.add(window)
+        self.last_active.pop(window, None)
+        self.schedule_sync()
+
+    def schedule_sync(self, *_):
+        if not self.sync_pending:
+            self.sync_pending = True
+            GLib.idle_add(self.sync)
 
     def on_active_changed(self, screen, _previous):
         active = screen.get_active_window()
-        if active:
+        if active and active not in self.closed:
             self.last_active[active] = time.monotonic()
-        for button in self.buttons.values():
-            button.update_look()
+        self.schedule_sync()
 
     def group_key(self, window):
         names = list(window.get_class_ids() or [])
@@ -581,9 +602,10 @@ class Bar(Gtk.Window):
         return app_id or "window:" + (names[0] if names else window.get_name() or "?")
 
     def sync(self, *_):
+        self.sync_pending = False
         groups = {}
         for w in self.screen.get_windows():
-            if w.is_skip_tasklist():
+            if w in self.closed or w.is_skip_tasklist():
                 continue
             groups.setdefault(self.group_key(w), []).append(w)
         for key in groups:
@@ -690,8 +712,10 @@ class Bar(Gtk.Window):
         fly.clear()
         getattr(self, "fill_" + name)(fly)
         if name == "tray":
-            alloc = self.tray_button.get_allocation()
-            fly.set_left(alloc.x + alloc.width // 2 - 80)
+            # Center the pop-up over the ^ button.
+            x, _ = self.tray_button.translate_coordinates(self, 0, 0)
+            width = max(fly.get_preferred_width()[1], 1)
+            fly.set_left(x + self.tray_button.get_allocated_width() // 2 - width // 2)
         self.catcher.show_all()
         fly.show_all()
         fly.present()
@@ -1012,9 +1036,12 @@ class Desktop(Gtk.Window):
 # --- Start up ---------------------------------------------------------------
 
 class SkorneXBar(Gtk.Application):
-    def __init__(self):
-        super().__init__(application_id="dev.skornex.Bar", flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
+    def __init__(self, mode):
+        app_id = "dev.skornex.Desktop" if mode == "desktop" else "dev.skornex.Bar"
+        super().__init__(application_id=app_id, flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
+        self.mode = mode
         self.bar = None
+        self.desktop = None
 
     def do_startup(self):
         Gtk.Application.do_startup(self)
@@ -1032,13 +1059,15 @@ class SkorneXBar(Gtk.Application):
 
     def do_command_line(self, command_line):
         args = command_line.get_arguments()[1:]
+        if self.mode == "desktop":
+            self.desktop = self.desktop or Desktop(self)
+            return 0
         if self.bar is None:
             self.bar = Bar(self)
-            self.desktop = Desktop(self)
         if args and args[0] in ("search", "power"):
             self.bar.toggle(args[0])
         return 0
 
 
 if __name__ == "__main__":
-    sys.exit(SkorneXBar().run(sys.argv))
+    sys.exit(SkorneXBar("desktop" if sys.argv[1:2] == ["desktop"] else "bar").run(sys.argv))

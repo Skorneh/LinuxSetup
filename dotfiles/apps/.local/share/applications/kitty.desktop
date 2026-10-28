@@ -1,0 +1,14 @@
+[Desktop Entry]
+# Shows kitty as "Terminal" in search, the taskbar and Alt+Tab.
+# A copy of kitty's own entry with a new name; this one takes priority.
+Version=1.0
+Type=Application
+Name=Terminal
+GenericName=Terminal
+Comment=Command line
+TryExec=kitty
+StartupNotify=true
+Exec=kitty
+Icon=kitty
+Categories=System;TerminalEmulator;
+Keywords=kitty;terminal;shell;console;command;
