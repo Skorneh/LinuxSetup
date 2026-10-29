@@ -189,6 +189,12 @@ done
 systemctl --user enable pipewire.socket pipewire-pulse.socket wireplumber.service 2>/dev/null \
     || warn "Couldn't enable PipeWire user services now; they normally start on their own at login."
 
+# Remember what's installed (not just downloaded), for the Updates module:
+# the version, then the exact commit.
+mkdir -p "$HOME/.local/share/skornex"
+printf '%s\n%s\n' "$(cat "$REPO_DIR/VERSION")" "$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null)" \
+    > "$HOME/.local/share/skornex/installed"
+
 echo
 info "SkorneX $(cat "$REPO_DIR/VERSION") is installed."
 # On a first install from a text console (not through bootstrap.sh, which

@@ -63,8 +63,8 @@ ICON_UP = ""
 ICON_ETHERNET = "\U000f0200"
 ICON_WIFI = "\U000f05a9"
 ICON_OFFLINE = "\U000f0318"
-ICON_VOLUME = ["", "", ""]
-ICON_MUTED = "\U000f075f"
+ICON_VOLUME = ["\U000f057f", "\U000f0580", "\U000f057e"]  # low, medium, high (same icon set as muted)
+ICON_MUTED = "\U000f0581"
 ICON_POWER = ""
 
 # Wi-Fi signal: 1 to 4 bars, and a padlock for networks with a password.
@@ -894,6 +894,9 @@ class Bar(Gtk.Window):
             self.vol_button.text.set_text(ICON_MUTED)
             return
         icon = ICON_MUTED if muted else ICON_VOLUME[min(2, level // 34)]
+        # Always icon + percent, in a fixed width, so muting or going from
+        # 5% to 100% never changes the size of the taskbar.
+        self.vol_button.text.set_width_chars(6)
         self.vol_button.text.set_text(f"{icon} {level}%")
 
     def show_volume_osd(self):

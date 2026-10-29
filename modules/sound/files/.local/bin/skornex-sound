@@ -48,9 +48,17 @@ context.modules = [
             name = limiter
             plugin = fast_lookahead_limiter_1913
             label = fastLookaheadLimiter
-            control = {{ "Input gain (dB)" = 0 "Limit (dB)" = {limit:.1f} "Release time (s)" = 0.1 }}
+            control = {{ "Input gain (dB)" = {boost:.1f} "Limit (dB)" = {limit:.1f} "Release time (s)" = 0.1 }}
           }}
+          {{ type = builtin name = left label = linear control = {{ "Mult" = {undo:.6f} }} }}
+          {{ type = builtin name = right label = linear control = {{ "Mult" = {undo:.6f} }} }}
         ]
+        links = [
+          {{ output = "limiter:Output 1" input = "left:In" }}
+          {{ output = "limiter:Output 2" input = "right:In" }}
+        ]
+        inputs = [ "limiter:Input 1" "limiter:Input 2" ]
+        outputs = [ "left:Out" "right:Out" ]
       }}
       audio.channels = 2
       audio.position = [ FL FR ]
@@ -68,6 +76,15 @@ context.modules = [
 ]
 """
 TEST_SECONDS = 5
+LOWEST_CAP = -40  # dB; 0 dB is as loud as a microphone can record
+
+
+def cap_settings(cap):
+    """The limiter can only cap at -20 dB or higher. For a lower cap, the
+    voice is boosted before the limiter and turned down the same amount after
+    it: quiet sounds come out unchanged, loud ones stop at the cap."""
+    boost = max(0.0, -20.0 - cap)
+    return {"boost": boost, "limit": cap + boost, "undo": 10 ** (-boost / 20)}
 
 
 def load_state():
@@ -267,7 +284,8 @@ class Page(Gtk.Box):
                 return
             os.makedirs(os.path.dirname(CAP_CONF), exist_ok=True)
             with open(CAP_CONF, "w") as f:
-                f.write(CAP_TEMPLATE.format(limit=self.state["limit"], node=CAP_NODE, mic=self.state["mic"]))
+                f.write(CAP_TEMPLATE.format(node=CAP_NODE, mic=self.state["mic"],
+                                            **cap_settings(self.state["limit"])))
         else:
             try:
                 os.remove(CAP_CONF)
@@ -342,7 +360,7 @@ class Page(Gtk.Box):
         if not self.cap_switch.get_active():
             return False
         db = event.x / max(1, widget.get_allocated_width()) * 60 - 60
-        self.cap_db = float(round(max(-20, min(-1, db))))
+        self.cap_db = float(round(max(LOWEST_CAP, min(-1, db))))
         widget.queue_draw()
         return True
 
