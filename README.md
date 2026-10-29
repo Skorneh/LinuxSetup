@@ -279,3 +279,7 @@ include:
 
 If you send changes: never commit passwords, SSH keys or tokens. `.gitignore`
 blocks the common ones, but check `git status` first.
+
+## License
+
+[MIT](LICENSE). Use it, change it, share it; keep the copyright notice.
