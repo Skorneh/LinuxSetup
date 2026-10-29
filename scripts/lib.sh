@@ -12,21 +12,33 @@ read_list() {
     sed -e 's/#.*//' -e 's/[[:space:]]*$//' "$1" | grep -v '^$' || true
 }
 
-# Ask a yes/no question. Default is yes.
+# Ask a yes/no question. Default is yes. SKORNEX_YES=1 answers yes by itself
+# (bootstrap.sh sets it after asking everything up front).
 confirm() {
     local reply
+    if [[ -n "${SKORNEX_YES:-}" ]]; then
+        echo "$1 yes"
+        return 0
+    fi
     read -rp "$1 [Y/n] " reply
     [[ -z "$reply" || "$reply" =~ ^[Yy] ]]
 }
 
-# Ask for the sudo password once, then keep it fresh in the background until
-# the script ends, so long steps (building paru, big downloads) don't ask again.
+# Ask for the sudo password once. For the rest of the run, a temporary rule in
+# /etc/sudoers.d lets sudo work without asking (building paru calls sudo from
+# places sudo's 5-minute memory doesn't cover). The rule is removed when the
+# script that made it ends, and replaced if a crash or power cut left it behind.
+SUDO_RULE=/etc/sudoers.d/zz-skornex-setup
 keep_sudo() {
+    if [[ -n "${SKORNEX_SUDO_OWNER:-}" ]] && sudo -n true 2>/dev/null; then
+        return 0  # a parent script (bootstrap.sh) made the rule and removes it
+    fi
     sudo -v || die "This needs your password (sudo)."
-    while kill -0 "$$" 2>/dev/null; do
-        sudo -n -v 2>/dev/null
-        sleep 50
-    done >/dev/null 2>&1 &
+    echo "$USER ALL=(ALL) NOPASSWD: ALL" | sudo tee "$SUDO_RULE" >/dev/null
+    sudo chmod 440 "$SUDO_RULE"
+    export SKORNEX_SUDO_OWNER=$$
+    trap 'sudo rm -f "$SUDO_RULE"' EXIT
+    trap 'exit 130' INT TERM
 }
 
 require_arch_user() {

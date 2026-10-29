@@ -68,13 +68,17 @@ Take out the USB stick and log in with your user on the text screen.
 curl -fsSL https://raw.githubusercontent.com/Skorneh/LinuxSetup/main/bootstrap.sh | bash
 ```
 
-It asks for your password once, downloads SkorneX to `~/LinuxSetup`, and
-installs everything (10–30 minutes, depending on your internet). Then it asks:
+It asks two things up front:
 
-- **"Also install gaming?"** Answer **y** on a gaming PC. You can also do it
-  later, see [Gaming](#gaming).
-- **"Restart now?"** After the restart, the PC starts at the SkorneX lock
-  screen. Type your password and you're on the desktop.
+- **"Also install gaming?"** Answer **y** on a gaming PC: it also picks and
+  installs the drivers for your graphics card. You can do it later instead,
+  see [Gaming](#gaming).
+- **Your password**, once.
+
+Then it runs by itself (10–30 minutes, depending on your internet) and
+restarts into SkorneX. The PC starts at the lock screen: type your password
+and you're on the desktop. Press Ctrl+C during the 10-second countdown at the
+end if you'd rather not restart yet.
 
 Running the command again is safe: it updates SkorneX and fixes anything that
 went missing.
@@ -265,7 +269,7 @@ include:
 
 | Path | What it does |
 |---|---|
-| `bootstrap.sh` | The one-command setup: downloads the repo, runs `install.sh`, offers `gaming.sh`. |
+| `bootstrap.sh` | The one-command setup: asks about gaming, downloads the repo, runs `install.sh` (and `gaming.sh`), restarts. |
 | `install.sh` | Installs the packages, links the configs, applies the colors, sets up the lock screen login, debloats Firefox. Safe to run again. |
 | `gaming.sh` | `[multilib]`, GPU drivers, and the gaming apps. Safe to run again. |
 | `packages/` | Package lists: `pkglist.txt` (official repos), `aurlist.txt` (AUR), `gaming.txt`, and `removelist.txt` (packages older versions of SkorneX used, removed on update). |

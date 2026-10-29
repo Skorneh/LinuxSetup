@@ -28,6 +28,7 @@ Pinned apps are in ~/.config/skornex/pins. Colors come from
 import faulthandler
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -66,6 +67,10 @@ ICON_VOLUME = ["", "", ""]
 ICON_MUTED = "\U000f075f"
 ICON_POWER = ""
 
+# Wi-Fi signal: 1 to 4 bars, and a padlock for networks with a password.
+ICON_WIFI_BARS = ["\U000f091f", "\U000f0922", "\U000f0925", "\U000f0928"]
+ICON_LOCK = "\uf023"
+
 DOUBLE_CLICK = getattr(Gdk.EventType, "DOUBLE_BUTTON_PRESS", None) or getattr(Gdk.EventType, "_2BUTTON_PRESS")
 
 
@@ -77,6 +82,30 @@ def run(*cmd):
         return subprocess.run(cmd, capture_output=True, text=True, timeout=5).stdout
     except (OSError, subprocess.SubprocessError):
         return ""
+
+
+def run_async(cmd, done=None):
+    """Run a command without freezing the bar; done(ok, output) gets called after."""
+    def finish(proc, result):
+        try:
+            _ok, out, _err = proc.communicate_utf8_finish(result)
+            ok = proc.get_successful()
+        except GLib.Error:
+            ok, out = False, ""
+        if done:
+            done(ok, out or "")
+    try:
+        proc = Gio.Subprocess.new(cmd, Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE)
+    except GLib.Error:
+        if done:
+            done(False, "")
+        return
+    proc.communicate_utf8_async(None, None, finish)
+
+
+def nmcli_fields(line):
+    """Split one line of `nmcli -t` output; it escapes ':' inside values as '\\:'."""
+    return [f.replace("\\:", ":").replace("\\\\", "\\") for f in re.split(r"(?<!\\):", line)]
 
 
 def spawn(*cmd):
@@ -966,44 +995,112 @@ class Bar(Gtk.Window):
         fly.show_all()
 
     def fill_network(self, fly):
-        fly.set_size_request(300, -1)
+        fly.set_size_request(320, -1)
+        GtkLayerShell.set_keyboard_mode(fly, GtkLayerShell.KeyboardMode.ON_DEMAND)
         kind, conn = self.network()
         status = {"ethernet": f"Wired: {conn}", "wifi": f"Wi-Fi: {conn}"}.get(kind, "Not connected")
         fly.box.pack_start(label("Network", "title"), False, False, 0)
         status_label = label(status, "status")
         status_label.set_xalign(0)
         fly.box.pack_start(status_label, False, False, 0)
+        self.wifi_entry = None
         if "wifi" in run("nmcli", "-t", "-f", "TYPE", "device").split():
-            seen = set()
-            for line in run("nmcli", "-t", "-f", "IN-USE,SSID,SIGNAL", "device", "wifi", "list").splitlines():
-                in_use, ssid, signal = (line.split(":") + ["", "", ""])[:3]
-                if not ssid or ssid in seen:
-                    continue
-                seen.add(ssid)
-                mark = "● " if in_use == "*" else "   "
-                fly.box.pack_start(self.row_button(f"{mark}{ssid}   {signal}%",
-                                                   lambda s=ssid: self.join_wifi(fly, s)), False, False, 0)
+            self.wifi_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            fly.box.pack_start(self.wifi_box, False, False, 0)
+            # Show what's already known right away, then scan in the background
+            # and refresh the list when the scan is done.
+            fields = ["nmcli", "-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "device", "wifi", "list", "--rescan"]
+            self.show_wifi(fly, run(*fields, "no"), scanning=True)
+            run_async(fields + ["yes"], lambda _ok, out: self.open_flyout == "network"
+                      and not self.wifi_entry and self.show_wifi(fly, out, scanning=False))
         fly.box.pack_start(Gtk.Separator(), False, False, 0)
         fly.box.pack_start(self.row_button("Network settings", lambda: (spawn("kitty", "-e", "nmtui"),
                                                                         self.close_flyout())), False, False, 0)
 
-    def join_wifi(self, fly, ssid):
-        known = ssid in run("nmcli", "-t", "-f", "NAME", "connection", "show").splitlines()
-        if known:
-            spawn("nmcli", "connection", "up", ssid)
-            self.close_flyout()
-            return
-        entry = Gtk.Entry(visibility=False, placeholder_text=f"Password for {ssid}")
-        GtkLayerShell.set_keyboard_mode(fly, GtkLayerShell.KeyboardMode.EXCLUSIVE)
+    def show_wifi(self, fly, listing, scanning):
+        for child in self.wifi_box.get_children():
+            child.destroy()
+        nets = {}
+        for line in listing.splitlines():
+            in_use, ssid, signal_, security = (nmcli_fields(line) + ["", "", "", ""])[:4]
+            if not ssid:
+                continue
+            strength = int(signal_) if signal_.isdigit() else 0
+            old = nets.get(ssid)
+            if not old or strength > old["signal"] or in_use == "*":
+                nets[ssid] = {"ssid": ssid, "signal": strength, "in_use": in_use == "*" or bool(old and old["in_use"]),
+                              "secure": security not in ("", "--")}
+        if not nets:
+            text = "Looking for networks…" if scanning else "No Wi-Fi networks found"
+            empty = label(text, "empty")
+            empty.set_xalign(0)
+            self.wifi_box.pack_start(empty, False, False, 4)
+        for net in sorted(nets.values(), key=lambda n: (not n["in_use"], -n["signal"])):
+            self.wifi_box.pack_start(self.wifi_row(fly, net), False, False, 0)
+        self.wifi_box.show_all()
 
-        def connect(*_):
-            spawn("nmcli", "device", "wifi", "connect", ssid, "password", entry.get_text())
-            GtkLayerShell.set_keyboard_mode(fly, GtkLayerShell.KeyboardMode.ON_DEMAND)
-            self.close_flyout()
-        entry.connect("activate", connect)
-        fly.box.pack_start(entry, False, False, 0)
-        fly.show_all()
+    def wifi_row(self, fly, net):
+        button = Gtk.Button()
+        button.set_relief(Gtk.ReliefStyle.NONE)
+        button.get_style_context().add_class("row")
+        row = Gtk.Box(spacing=10)
+        bars = ICON_WIFI_BARS[min(3, net["signal"] // 25)]
+        row.pack_start(label(bars, "wifi-bars"), False, False, 0)
+        name = label(net["ssid"])
+        name.set_xalign(0)
+        name.set_ellipsize(Pango.EllipsizeMode.END)
+        row.pack_start(name, True, True, 0)
+        if net["in_use"]:
+            row.pack_start(label("Connected", "status"), False, False, 0)
+        if net["secure"]:
+            lock = label(ICON_LOCK, "status")
+            lock.set_tooltip_text("Needs a password")
+            row.pack_start(lock, False, False, 0)
+        button.add(row)
+        button.set_tooltip_text(f"Signal {net['signal']}%")
+        button.connect("clicked", lambda b: self.join_wifi(fly, net, b))
+        return button
+
+    def join_wifi(self, fly, net, button):
+        ssid = net["ssid"]
+        if net["in_use"]:
+            return
+        known = ssid in run("nmcli", "-t", "-f", "NAME", "connection", "show").splitlines()
+        if known or not net["secure"]:
+            self.connect_wifi(ssid, known=known)
+            return
+        # One password box, right under the network that was clicked.
+        if self.wifi_entry:
+            self.wifi_entry.destroy()
+        entry = Gtk.Entry(visibility=False, placeholder_text=f"Password for {ssid}, then Enter")
+        entry.set_margin_start(8)
+        entry.set_margin_end(8)
+        entry.connect("activate", lambda e: e.get_text() and self.connect_wifi(ssid, e.get_text()))
+        self.wifi_entry = entry
+        self.wifi_box.pack_start(entry, False, False, 4)
+        self.wifi_box.reorder_child(entry, self.wifi_box.get_children().index(button) + 1)
+        GtkLayerShell.set_keyboard_mode(fly, GtkLayerShell.KeyboardMode.EXCLUSIVE)
+        entry.show()
         entry.grab_focus()
+
+    def connect_wifi(self, ssid, password=None, known=False):
+        if known:
+            cmd = ["nmcli", "connection", "up", "id", ssid]
+        else:
+            cmd = ["nmcli", "device", "wifi", "connect", ssid] + (["password", password] if password else [])
+
+        def finished(ok, _out):
+            if ok:
+                spawn("notify-send", "-t", "3000", "Wi-Fi", f"Connected to {ssid}")
+            else:
+                spawn("notify-send", "Wi-Fi", f"Couldn't connect to {ssid}."
+                      + ("" if known else " Check the password and try again."))
+                if not known:  # don't keep a saved network with a wrong password
+                    run_async(["nmcli", "connection", "delete", "id", ssid])
+            self.update_network()
+        spawn("notify-send", "-t", "3000", "Wi-Fi", f"Connecting to {ssid}…")
+        run_async(cmd, finished)
+        self.close_flyout()
 
     def fill_volume(self, fly):
         fly.set_size_request(320, -1)
