@@ -82,6 +82,10 @@ for pkg_dir in "$REPO_DIR"/dotfiles/*/; do
 done
 # Remove links left behind by files that were deleted from the repo.
 find "$HOME/.config" "$HOME/.local" -xtype l -lname '*LinuxSetup/dotfiles/*' -delete 2>/dev/null || true
+# An icon cache left here by another app (Steam, Wine…) hides the SkorneX
+# icons from labwc, which then shows its own logo in the title bar. Without a
+# cache, labwc and GTK read the folder directly.
+rm -f "$HOME/.local/share/icons/hicolor/icon-theme.cache"
 
 # --- 5. Colors ---
 info "Applying colors..."

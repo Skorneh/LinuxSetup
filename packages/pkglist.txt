@@ -41,7 +41,6 @@ python-gobject
 gtk3
 gtk-layer-shell
 libxfce4windowing
-libdbusmenu-gtk3
 
 # --- Screenshots ---
 wl-clipboard

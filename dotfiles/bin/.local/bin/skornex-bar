@@ -28,6 +28,7 @@ Pinned apps are in ~/.config/skornex/pins. Colors come from
 import faulthandler
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -43,12 +44,6 @@ gi.require_version("GtkLayerShell", "0.1")
 gi.require_version("Libxfce4windowing", "0.0")
 from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk, GtkLayerShell, Pango  # noqa: E402
 from gi.repository import Libxfce4windowing as Xfw  # noqa: E402
-
-try:
-    gi.require_version("DbusmenuGtk3", "0.4")
-    from gi.repository import DbusmenuGtk3  # noqa: E402
-except (ValueError, ImportError):
-    DbusmenuGtk3 = None
 
 HOME = os.path.expanduser("~")
 
@@ -447,14 +442,79 @@ class Tray:
     def activate(self, item):
         self.call(item, "Activate", GLib.Variant("(ii)", (0, 0)))
 
-    def context_menu(self, item, widget, event):
-        if DbusmenuGtk3 and item.get("Menu"):
-            menu = DbusmenuGtk3.Menu.new(item["bus"], item["Menu"])
-            menu.attach_to_widget(widget, None)
-            menu.popup_at_widget(widget, Gdk.Gravity.NORTH, Gdk.Gravity.SOUTH, event)
-            item["_menu"] = menu   # keep it alive while open
-        else:
-            self.call(item, "ContextMenu", GLib.Variant("(ii)", (0, 0)))
+    def context_menu(self, item, widget, event, done):
+        """The app's own right-click menu (Discord: Mute, Deafen, Quit…), drawn
+        like the taskbar's menus. Apps without one get Open and Quit."""
+        menu = Gtk.Menu()
+        layout = self.menu_layout(item)
+        if layout:
+            self.fill_menu(menu, item, layout, done)
+        if not menu.get_children():
+            title = item.get("Title") or "app"
+            for text, cb in [(f"Open {title}", lambda: self.activate(item)),
+                             (f"Quit {title}", lambda: self.quit(item))]:
+                mi = Gtk.MenuItem(label=text)
+                mi.connect("activate", lambda _m, cb=cb: (cb(), done()))
+                menu.append(mi)
+        menu.show_all()
+        menu.attach_to_widget(widget, None)
+        menu.set_property("rect-anchor-dy", -8)
+        menu.popup_at_widget(widget, Gdk.Gravity.NORTH, Gdk.Gravity.SOUTH, event)
+
+    def menu_layout(self, item):
+        path = item.get("Menu")
+        if not path:
+            return None
+        try:
+            self.bus.call_sync(item["bus"], path, "com.canonical.dbusmenu", "AboutToShow",
+                               GLib.Variant("(i)", (0,)), None, Gio.DBusCallFlags.NONE, 1000, None)
+        except GLib.Error:
+            pass  # optional for apps
+        try:
+            result = self.bus.call_sync(item["bus"], path, "com.canonical.dbusmenu", "GetLayout",
+                                        GLib.Variant("(iias)", (0, -1, [])), None,
+                                        Gio.DBusCallFlags.NONE, 2000, None)
+        except GLib.Error as e:
+            print(f"skornex-bar: tray menu failed: {e}", file=sys.stderr, flush=True)
+            return None
+        return result.unpack()[1]   # (id, properties, children)
+
+    def fill_menu(self, menu, item, layout, done):
+        for _id, props, children in layout[2]:
+            if not props.get("visible", True):
+                continue
+            if props.get("type") == "separator":
+                menu.append(Gtk.SeparatorMenuItem())
+                continue
+            text = props.get("label", "")
+            if props.get("toggle-type") in ("checkmark", "radio"):
+                mi = Gtk.CheckMenuItem.new_with_mnemonic(text)
+                mi.set_draw_as_radio(props["toggle-type"] == "radio")
+                mi.set_active(props.get("toggle-state", 0) == 1)
+            else:
+                mi = Gtk.MenuItem.new_with_mnemonic(text)
+            mi.set_sensitive(props.get("enabled", True))
+            if children:
+                sub = Gtk.Menu()
+                self.fill_menu(sub, item, (_id, props, children), done)
+                mi.set_submenu(sub)
+            else:
+                mi.connect("activate", lambda _m, i=_id: (self.menu_click(item, i), done()))
+            menu.append(mi)
+
+    def menu_click(self, item, item_id):
+        self.bus.call(item["bus"], item["Menu"], "com.canonical.dbusmenu", "Event",
+                      GLib.Variant("(isvu)", (item_id, "clicked", GLib.Variant("i", 0), 0)),
+                      None, Gio.DBusCallFlags.NONE, 2000, None, None, None)
+
+    def quit(self, item):
+        try:
+            pid = self.bus.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+                                     "GetConnectionUnixProcessID", GLib.Variant("(s)", (item["bus"],)),
+                                     None, Gio.DBusCallFlags.NONE, 1000, None).unpack()[0]
+            os.kill(pid, signal.SIGTERM)
+        except (GLib.Error, OSError) as e:
+            print(f"skornex-bar: quit failed: {e}", file=sys.stderr, flush=True)
 
     def call(self, item, method, params):
         self.bus.call(item["bus"], item["path"], item.get("iface", "org.kde.StatusNotifierItem"),
@@ -895,7 +955,7 @@ class Bar(Gtk.Window):
 
             def on_press(widget, event, it=item):
                 if event.button == 3 or it.get("ItemIsMenu"):
-                    self.tray.context_menu(it, widget, event)
+                    self.tray.context_menu(it, widget, event, done=lambda: after_menu(self.close_flyout))
                 elif event.button == 1:
                     self.tray.activate(it)
                     self.close_flyout()

@@ -386,4 +386,7 @@ class App(Gtk.Application):
 
 
 if __name__ == "__main__":
+    # The window's app ID. labwc looks up the title bar icon by it, so it must
+    # match the .desktop file name (dev.skornex.TaskManager.desktop).
+    GLib.set_prgname("dev.skornex.TaskManager")
     sys.exit(App().run(sys.argv))

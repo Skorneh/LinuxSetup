@@ -1549,4 +1549,7 @@ class App(Gtk.Application):
 
 
 if __name__ == "__main__":
+    # The window's app ID. labwc looks up the title bar icon by it, so it must
+    # match the .desktop file name (dev.skornex.Paint.desktop).
+    GLib.set_prgname("dev.skornex.Paint")
     sys.exit(App().run(sys.argv))
