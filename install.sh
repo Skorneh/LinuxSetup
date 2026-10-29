@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Base setup: labwc desktop, apps, audio, configs and services.
 # Safe to run again; it only installs what's missing.
-# Gaming and GPU drivers live in gaming.sh (real PC only).
+# Gaming and GPU drivers live in gaming.sh.
 set -euo pipefail
 
 source "$(dirname "$0")/scripts/lib.sh"

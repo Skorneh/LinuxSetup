@@ -1,207 +1,281 @@
 # SkorneX
 
-My own Arch Linux desktop, built from nothing: a minimal Arch install, the
-labwc window manager (windows float like on Windows, no tiling), and only the
-pieces I picked. Gaming (Steam, Lutris, World of Warcraft) on the real PC.
+A clean, Windows-style desktop for Arch Linux, set up with one command.
 
-There's no settings app. Everything is a text file in this repo or a SkorneX
-tool I own.
+SkorneX starts from a minimal Arch install and adds only what a desktop needs:
+the labwc window manager (windows float and snap like on Windows, no tiling),
+a taskbar and desktop built for SkorneX, a small set of apps, and optional
+gaming. Everything is dark (black and grays), and there's no settings app to
+dig through: what you see is a handful of text files and small SkorneX tools.
 
-## What's in here
+- **Windows habits work:** Start-style search on the Windows key, a taskbar
+  with pinned apps, Alt+Tab, Win+arrow snapping, Ctrl+Shift+Esc for Task
+  Manager, Print Screen for screenshots, a Recycle Bin on the desktop.
+- **Small:** no desktop environment, no background services you didn't ask for.
+- **Gaming ready:** one extra command adds GPU drivers, Steam, Lutris (for
+  Battle.net, Epic, GOG…), GameMode, MangoHud and Discord.
+- **Starts at the lock screen:** turn the PC on, type your password, you're in.
 
-| Path | What it does |
-|---|---|
-| `bootstrap.sh` | The one command for a fresh Arch install: downloads the repo, runs `install.sh`, offers `gaming.sh`. |
-| `install.sh` | Installs everything, links the configs, applies the colors, sets up booting straight to the lock screen, debloats Firefox. Adds the guest agent in a Proxmox VM. |
-| `gaming.sh` | Real PC only: enables `[multilib]`, detects your GPU and installs drivers, then Steam, Lutris, GameMode, MangoHud and Discord. |
-| `packages/` | Package lists: `pkglist.txt` (official repos), `aurlist.txt` (AUR), `gaming.txt`, and `removelist.txt` (old packages to remove). |
-| `dotfiles/apps/` | App list tweaks: kitty shown as Terminal, Mousepad as Notepad, Paint and Task Manager added, two broken webcam test tools (from ffmpeg) and Winetricks (Lutris uses it behind the scenes) hidden. |
-| `dotfiles/` | Config files, linked into `~` with GNU Stow. Each folder mirrors your home folder. |
-| `dotfiles/skornex/.config/skornex/colors` | **The one file with all the colors.** |
-| `dotfiles/skornex/.config/skornex/pins` | Apps pinned to the taskbar. |
-| `dotfiles/bin/.local/bin/` | The SkorneX tools (below). |
-| `theme/templates/` | Configs that use the colors. `skornex-theme` fills them in. |
-| `system/firefox-policies.json` | Firefox debloat settings. |
-| `scripts/check-packages.sh` | Lists installed packages that aren't in the lists yet. |
+> SkorneX is a personal project in testing. Try it in a VM or on a spare PC
+> first, and expect rough edges. Found one? See [Reporting problems](#reporting-problems).
 
-All scripts are safe to run more than once.
+## Contents
 
-## SkorneX tools
+- [What you need](#what-you-need)
+- [Install](#install)
+- [Gaming](#gaming)
+- [Using SkorneX](#using-skornex)
+- [Shortcuts](#shortcuts)
+- [Keeping it up to date](#keeping-it-up-to-date)
+- [Customizing](#customizing)
+- [Troubleshooting](#troubleshooting)
+- [Trying it in a VM](#trying-it-in-a-vm)
+- [Reporting problems](#reporting-problems)
+- [How the repo is laid out](#how-the-repo-is-laid-out)
 
-| Tool | Opens with | Does |
-|---|---|---|
-| `skornex-bar` (**SkorneXBar**) | Starts with the desktop | The taskbar. See below. |
-| `skornex-desktop` (**SkorneXDesktop**) | Starts with the desktop | Desktop icons: the Recycle Bin plus everything in `~/Desktop`. Drag them anywhere (they snap to a grid and stay put), double-click to open, right-click for options. Add app shortcuts from the taskbar's right-click menu. |
-| `skornex-taskmgr` (**Task Manager**) | Ctrl+Shift+Esc, or search "Task Manager" | Apps and background processes with CPU and memory. Select one and press End task (or right-click it). |
-| `skornex-paint` (**Paint**) | Search "Paint" | Works like Microsoft Paint: take a screenshot, open Paint, Ctrl+V, drag it into place, draw on it, Ctrl+S. Pencil, brush, fill, text, eraser, color picker, shapes, crop, resize and rotate, left click for Color 1 and right click for Color 2. Saves PNG, JPEG or BMP. |
-| `skornex-theme` | Run it in a terminal | Applies the colors file everywhere. |
-| `skornex-screenshot` | Print Screen keys | Region or full screen to the clipboard, or save to a file. |
+## What you need
 
-### SkorneXBar
+- A 64-bit PC (or VM) with at least 4 GB of RAM (8 GB for gaming) and 30 GB of
+  disk. The install erases the disk you pick.
+- Internet during the install (cable is easiest; Wi-Fi works too).
+- A USB stick with the [Arch Linux ISO](https://archlinux.org/download/).
+- Secure Boot turned off in the PC's firmware settings (the Arch ISO doesn't
+  boot with it on).
 
-Works like the Windows taskbar:
-
-- **Search box** (far left), or the **Windows key** or **Ctrl+Space**: type to
-  find apps and files in your home folder. Shows "No results" when nothing
-  matches. With nothing typed, it lists all apps.
-- **App buttons** start on the left: pinned and open apps in one row (Files is
-  pinned by default). Three looks: pinned but closed (plain), open
-  (line under it), the app you're using (highlighted, brighter line).
-  - Click: open it, switch to it, or minimize it if you're already using it.
-  - Right-click: **Pin to taskbar** / **Unpin from taskbar**, **Add to
-    desktop**, new window, close.
-  - Drag any button left or right, pinned or not. Pinned order is saved.
-- **^**: hidden icons in a small pop-up. Apps that have a tray icon (Discord,
-  Steam…) put it here while they're running, including after you close their
-  window. Click one to open the app, right-click for its menu.
-- **Win+R** (Run) opens a SkorneXBar pop-up too.
-- **Network, volume, clock, power**: each opens a small panel in the
-  bottom-right corner. Click the button again, click anywhere else, or press
-  Esc to close it. Volume has a slider and the output list (speakers,
-  headset…); scrolling on the volume changes it.
-
-## Apps
-
-- **Files:** Nemo (Win+E).
-- **Terminal:** kitty, shown as Terminal (Ctrl+Alt+T).
-- **Notepad:** Mousepad, shown as Notepad. Tabs, line numbers and syntax
-  colors; opens `.sh`, `.md` and other text files when you double-click them.
-- **Firefox** (debloated). **Discord** comes with `gaming.sh`.
-- **Xwayland** runs older X11 apps (Steam, Wine games) inside labwc.
-
-## Colors
-
-All colors are in `~/.config/skornex/colors` (Graphite: black and grays).
-Change a value, then run:
-
-```bash
-skornex-theme
-```
-
-It rewrites SkorneXBar, the desktop background, notifications, terminal, window
-borders and lock screen, and reloads what's running. App windows like Nemo use
-the dark `adw-gtk3-dark` theme.
-
-## Setting up a machine
+## Install
 
 ### 1. Install Arch
 
-Boot the Arch ISO and run `archinstall`. Choose:
+Boot the Arch USB. On Wi-Fi, connect first with `iwctl` (see the
+[Arch wiki](https://wiki.archlinux.org/title/Iwd#iwctl)). Then run
+`archinstall` and choose:
 
-- **Profile:** Minimal
-- **User:** create your user and give it sudo (superuser) rights
-- **Network:** NetworkManager (best). Any choice that gets you online after
-  the reboot works; the setup switches it to NetworkManager. "No network
-  configuration" leaves you offline, so don't pick that one.
-- **Audio:** PipeWire, or anything. The setup installs PipeWire and replaces
-  PulseAudio if it's there.
+- **Disk configuration:** the drive to install on. It gets erased.
+- **Profile:** Minimal.
+- **Authentication:** create your user and give it **sudo** (superuser)
+  rights. A root password isn't needed.
+- **Network:** NetworkManager (best). Anything that gets you online after the
+  restart works; SkorneX switches it to NetworkManager. Don't pick "No network
+  configuration", or you'll be offline.
+- **Audio:** PipeWire (or anything; SkorneX installs PipeWire either way).
 
-Reboot into the new system and log in on the text console.
+Leave everything else as it is, choose **Install**, and restart when it's done.
+Take out the USB stick and log in with your user on the text screen.
 
-### 2. Run the setup
-
-One command does it all:
+### 2. Run the SkorneX setup
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Skorneh/LinuxSetup/main/bootstrap.sh | bash
 ```
 
-It asks for your password, downloads this repo to `~/LinuxSetup`, runs
-`install.sh`, asks whether to install gaming too (`gaming.sh`, step 3), and
-then offers to restart. The PC then starts at your lock screen. Type your
-password and you're on the desktop.
+It asks for your password once, downloads SkorneX to `~/LinuxSetup`, and
+installs everything (10–30 minutes, depending on your internet). Then it asks:
 
-The repo needs to live at `~/LinuxSetup`, because your configs are symlinks
-into it. To do the same by hand:
+- **"Also install gaming?"** Answer **y** on a gaming PC. You can also do it
+  later, see [Gaming](#gaming).
+- **"Restart now?"** After the restart, the PC starts at the SkorneX lock
+  screen. Type your password and you're on the desktop.
+
+Running the command again is safe: it updates SkorneX and fixes anything that
+went missing.
+
+<details>
+<summary>Prefer to do it by hand?</summary>
 
 ```bash
 sudo pacman -S --needed git
-git clone -b main https://github.com/Skorneh/LinuxSetup.git ~/LinuxSetup
+git clone https://github.com/Skorneh/LinuxSetup.git ~/LinuxSetup
 ~/LinuxSetup/install.sh
+~/LinuxSetup/gaming.sh      # optional
 sudo reboot
 ```
 
-### 3. Gaming (real PC only)
+The folder has to be `~/LinuxSetup`: your settings are links into it.
+</details>
 
-If you said no to gaming in step 2, run it any time:
+## Gaming
+
+If you skipped gaming during setup, run this any time, then restart:
 
 ```bash
 ~/LinuxSetup/gaming.sh
-sudo reboot
 ```
 
-It shows the GPU it found and the driver packages it picked, and asks before
-installing them. After rebooting:
+It turns on Arch's 32-bit packages (`[multilib]`), finds your graphics card
+(NVIDIA, AMD or Intel), shows you the driver packages it picked and asks before
+installing them, then installs:
 
-- **Steam:** Settings > Compatibility > turn on "Enable Steam Play for all other titles".
-- **Other launchers** (Battle.net, Epic, GOG…): open Lutris, search for the launcher, install it, and install your games from there.
+| App | What it's for |
+|---|---|
+| **Steam** | Steam games. Windows games run through Steam's Proton. |
+| **Lutris** | Other launchers and games: Battle.net, Epic, GOG, Ubisoft, EA… |
+| **Wine** (+ Mono, Gecko) | Runs Windows programs. Lutris uses it for you. |
+| **Winetricks** | Adds Windows parts (fonts, DirectX…) to games. Lutris uses it for you, so it's hidden from search. |
+| **GameMode** | Gives a game full CPU power while it runs. |
+| **MangoHud** | On-screen FPS, CPU and GPU usage while you play. |
+| **Discord** | Voice and chat. |
+
+After restarting:
+
+- **Steam:** Settings > Compatibility > turn on **"Enable Steam Play for all
+  other titles"**, so Windows-only games show up as installable.
+- **Battle.net, Epic, GOG…:** open Lutris, search for the launcher, install
+  it, sign in, and install your games from there.
+- **FPS counter:** in Steam, right-click a game > Properties > Launch options:
+  `mangohud %command%`. Add GameMode with `gamemoderun mangohud %command%`.
+
+In a VM, `gaming.sh` warns you, skips the drivers and installs the rest, so
+you can check it works. Games will be slow without a real graphics card.
+
+## Using SkorneX
+
+### The taskbar (SkorneXBar)
+
+- **Search** (far left), the **Windows key**, or **Ctrl+Space**: type to find
+  apps and files in your home folder. With nothing typed, it lists all apps.
+- **App buttons:** pinned and open apps share one row. Files is pinned to
+  start with.
+  - **Click** to open an app, switch to it, or minimize it if you're already
+    in it.
+  - **Right-click** for Pin/Unpin, Add to desktop, New window and Close.
+  - **Drag** buttons left or right to reorder them.
+- **^ (hidden icons):** tray icons from apps like Discord and Steam. Click one
+  to open the app, right-click for its menu (Mute, Quit…).
+- **Network, volume, clock, power:** each opens a small panel in the
+  bottom-right corner. Click outside it or press Esc to close it. Scroll on the
+  volume icon to change the volume.
+
+### The desktop (SkorneXDesktop)
+
+The Recycle Bin, plus everything in your `~/Desktop` folder. Drag icons
+anywhere (they snap to a grid and stay put), double-click to open, right-click
+for options. Add app shortcuts from a taskbar button's right-click menu.
+
+### Apps
+
+| App | What it is |
+|---|---|
+| **Files** (Win+E) | Nemo file manager. |
+| **Terminal** (Ctrl+Alt+T) | kitty. `nano` is there for quick edits. |
+| **Notepad** | Mousepad: tabs, line numbers, syntax colors. Opens text files you double-click. |
+| **Paint** | SkorneX Paint, laid out like Microsoft Paint. Take a screenshot, open Paint, press Ctrl+V, mark it up, Ctrl+S. |
+| **Task Manager** (Ctrl+Shift+Esc) | Apps and background processes with CPU and memory. Select one and press End task. |
+| **Firefox** | With Pocket, sponsored content, telemetry and the AI sidebar turned off. Check `about:policies` to see the settings. |
+
+Older X11 apps (Steam, Wine games) run through Xwayland, which is included.
 
 ## Shortcuts
 
 | Keys | Action |
 |---|---|
 | Win, or Ctrl+Space | Search apps and files |
-| Win+R | Run a command (SkorneXBar pop-up) |
-| Win+E | Files (Nemo) |
+| Win+R | Run a command |
+| Win+E | Files |
 | Ctrl+Alt+T | Terminal |
 | Win+L | Lock |
 | Win+D | Show desktop |
 | Win+Left / Win+Right | Snap to half the screen |
 | Win+Up / Win+Down | Maximize / minimize |
-| Win+Shift+Left / Right | Move window to the other monitor |
+| Win+Shift+Left / Right | Move the window to the other monitor |
 | Alt+Tab | Switch windows, with previews |
-| Alt+F4 | Close window |
+| Alt+F4 | Close the window |
 | Ctrl+Alt+Q | Force-quit the window you're in |
 | Ctrl+Shift+Esc | Task Manager |
-| Ctrl+Alt+Delete | Power menu |
-| Print Screen, Win+Shift+S, Alt+Print Screen | Drag a box, copy to clipboard |
-| Shift+Print Screen | Whole screen, copy to clipboard |
+| Ctrl+Alt+Delete | Power menu (Lock, Restart, Shut down) |
+| Print Screen, Win+Shift+S | Drag a box, copy it to the clipboard |
+| Shift+Print Screen | Whole screen to the clipboard |
 | Win+Print Screen | Whole screen, saved to Pictures/Screenshots |
-| Win+Shift+R | Reload labwc after editing `rc.xml` |
+| Volume keys | Volume up, down, mute |
 
-Dragging a window to a screen edge snaps it to half the screen, a corner to a
-quarter, the top to maximize. Clicking the empty desktop does nothing.
+Dragging a window to a screen edge snaps it to half the screen, to a corner
+for a quarter, and to the top to maximize it. Mouse back/forward buttons work
+in Firefox and Files.
 
-Alt+Print Screen can't grab just the current window on labwc, so it works like
-Print Screen (drag a box around it). Mouse side buttons (back/forward) work in
-Firefox and Nemo on their own.
+## Keeping it up to date
 
-## Day-to-day
+| Command | Does |
+|---|---|
+| `update` | Updates all apps and the system (`paru -Syu`). Do this every week or two. |
+| `cd ~/LinuxSetup && git pull && ./install.sh` | Gets the latest SkorneX. |
+| `pkgcheck` | Lists apps you installed yourself that SkorneX doesn't know about. |
 
-- **Edit a config:** edit it in place (for example `~/.config/labwc/rc.xml`).
-  It's a symlink into the repo, so just commit the change.
-- **Edit a themed config** (anything in `theme/templates/`): edit the template
-  in the repo, then run `skornex-theme`. The file in `~/.config` gets overwritten.
-- **Change SkorneXBar:** edit `dotfiles/bin/.local/bin/skornex-bar` (Python),
-  then run `pkill -f skornex-bar`. It restarts by itself a second later.
-- **SkorneXBar or SkorneXDesktop crashed?** They restart by themselves. What
-  went wrong is in `~/.cache/skornex-bar.log` or `~/.cache/skornex-desktop.log`
-  (`tail -50 ~/.cache/skornex-bar.log`).
-- **Add a new config file to the repo:** move it into the matching place under
-  `dotfiles/<name>/`, then run `./install.sh` again to link it.
-- **Installed something new?** Run `pkgcheck` to see what isn't tracked, and
-  add what you want to keep to the right list.
-- **Update the system:** `update` (runs `paru -Syu`).
+Install more apps with `sudo pacman -S <name>` (official repos) or
+`paru -S <name>` (the [AUR](https://aur.archlinux.org/)). They show up in
+search right away.
 
-## Testing in a VM (Proxmox)
+## Customizing
 
-Try configs in a VM before touching the real PC. In Proxmox, create a VM with:
+- **Colors:** edit `~/.config/skornex/colors`, then run `skornex-theme`. It
+  updates the taskbar, desktop, notifications, terminal, window borders and
+  lock screen.
+- **Pinned apps:** right-click a taskbar button to pin or unpin it. The list
+  lives in `~/.config/skornex/pins`.
+- **Keyboard shortcuts and window behavior:** `~/.config/labwc/rc.xml` (labwc
+  [docs](https://labwc.github.io/labwc-config.5.html)). Press Win+Shift+R to
+  reload it.
+- **Startup apps:** `~/.config/labwc/autostart`.
 
-- **System:** q35, OVMF (UEFI), EFI disk with **"Pre-Enroll keys" unticked**
-  (the Arch ISO won't boot with Secure Boot on), QEMU Agent ticked
-- **CPU:** 4 cores, type `host`. **Memory:** 8 GB. **Disk:** 40+ GB
-- **Display:** VirtIO-GPU
+Most of your settings are links into `~/LinuxSetup/dotfiles`, so editing them
+edits your copy of SkorneX. If `git pull` complains about your changes later,
+run `git -C ~/LinuxSetup stash` first, or fork the repo and use your fork.
+Files made from `theme/templates/` get rewritten by `skornex-theme`: edit the
+template instead.
 
-In `archinstall`, add `qemu-guest-agent` under **Additional packages**.
-Otherwise Proxmox's Shutdown button hangs waiting for the agent. Keep the VM
-out of HA and replication; it's temporary.
+## Troubleshooting
 
-Run steps 1–2 only, and take a snapshot right after `archinstall` so you can
-roll back. When you're done, Shutdown → More → Remove to free its resources.
-`gaming.sh` also runs in a VM to check that it installs: it warns you, skips
-the GPU drivers, and installs Steam and the rest. Games will be slow there.
+| Problem | Fix |
+|---|---|
+| Setup stopped with an error | Check your internet, then run the setup command again. It picks up where it left off. |
+| "certificate is not yet valid" | The clock is wrong. The setup fixes it; just run it again. |
+| The taskbar or desktop icons disappeared | They restart by themselves within a second. If it keeps happening, look at `~/.cache/skornex-bar.log` or `~/.cache/skornex-desktop.log` and include it in a bug report. |
+| An app is frozen | Ctrl+Alt+Q force-quits the window you're in, or use Task Manager (Ctrl+Shift+Esc). |
+| No sound | Click the volume icon and pick the right output (speakers, headset…). |
+| No internet after setup | Click the network icon on the taskbar. On Wi-Fi, run `nmtui` in Terminal to connect. |
+| A game won't start | Check that Steam Play is on (see [Gaming](#gaming)), and that you restarted after `gaming.sh`. |
+| Print Screen does nothing in a VM | The VM window often catches the key. Run `skornex-screenshot region` in Terminal instead. |
 
-## Keep secrets out
+## Trying it in a VM
 
-Never commit passwords, SSH keys or tokens. `.gitignore` blocks the common
-ones, but check `git status` before committing.
+A VM is the safest way to try SkorneX. Any of these work:
+
+- **Proxmox:** machine q35, BIOS OVMF (UEFI), EFI disk with **"Pre-Enroll
+  keys" unticked**, QEMU Agent ticked. CPU type `host`, 4 cores, 8 GB of
+  memory, 40 GB of disk, display **VirtIO-GPU**.
+- **virt-manager (QEMU/KVM):** 4 CPUs, 8 GB, 40 GB, video **Virtio**, firmware
+  UEFI without Secure Boot.
+- **VirtualBox:** 4 CPUs, 8 GB, 40 GB, enable EFI, graphics **VMSVGA** with 3D
+  acceleration off. Expect it to be slower than the others.
+
+Then follow [Install](#install). Take a snapshot after `archinstall` so you can
+roll back and try again. In a VM, SkorneX also installs the QEMU guest agent so
+the host can shut it down cleanly.
+
+## Reporting problems
+
+Open an [issue](https://github.com/Skorneh/LinuxSetup/issues/new/choose) and
+include:
+
+- What you did, what you expected, and what happened instead.
+- Real PC or VM (which one), and your graphics card.
+- A photo or screenshot if it's something you can see.
+- For taskbar or desktop problems, the last lines of the log:
+  `tail -50 ~/.cache/skornex-bar.log`
+
+## How the repo is laid out
+
+| Path | What it does |
+|---|---|
+| `bootstrap.sh` | The one-command setup: downloads the repo, runs `install.sh`, offers `gaming.sh`. |
+| `install.sh` | Installs the packages, links the configs, applies the colors, sets up the lock screen login, debloats Firefox. Safe to run again. |
+| `gaming.sh` | `[multilib]`, GPU drivers, and the gaming apps. Safe to run again. |
+| `packages/` | Package lists: `pkglist.txt` (official repos), `aurlist.txt` (AUR), `gaming.txt`, and `removelist.txt` (packages older versions of SkorneX used, removed on update). |
+| `dotfiles/` | Config files, linked into your home folder with GNU Stow. Each folder mirrors `~`. |
+| `dotfiles/bin/.local/bin/` | The SkorneX tools: `skornex-bar` (taskbar and desktop), `skornex-taskmgr`, `skornex-paint`, `skornex-screenshot`, `skornex-theme`. |
+| `dotfiles/apps/` | App list tweaks: kitty shown as Terminal, Mousepad as Notepad, Paint and Task Manager added, a few tools hidden from search. |
+| `dotfiles/skornex/.config/skornex/` | `colors` (all the colors) and `pins` (taskbar pins). |
+| `theme/templates/` | Configs that use the colors. `skornex-theme` fills them in. |
+| `system/firefox-policies.json` | The Firefox settings. |
+| `scripts/` | Shared helpers and `check-packages.sh` (`pkgcheck`). |
+
+If you send changes: never commit passwords, SSH keys or tokens. `.gitignore`
+blocks the common ones, but check `git status` first.

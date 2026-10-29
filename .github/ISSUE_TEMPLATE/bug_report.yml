@@ -1,0 +1,41 @@
+name: Something's wrong
+description: A bug, a crash, or something that doesn't work like you'd expect.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead. Screenshots or photos help.
+    validations:
+      required: true
+  - type: dropdown
+    id: machine
+    attributes:
+      label: Where are you running SkorneX?
+      options:
+        - Real PC
+        - Proxmox VM
+        - virt-manager / QEMU VM
+        - VirtualBox VM
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: Graphics card
+      description: For example "NVIDIA RTX 3070" or "AMD RX 6600". Skip it in a VM.
+  - type: dropdown
+    id: gaming
+    attributes:
+      label: Did you run gaming.sh?
+      options:
+        - "No"
+        - "Yes"
+  - type: textarea
+    id: log
+    attributes:
+      label: Log (taskbar or desktop problems)
+      description: Run `tail -50 ~/.cache/skornex-bar.log` in Terminal and paste the result.
+      render: text

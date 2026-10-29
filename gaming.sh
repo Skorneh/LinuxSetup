@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Gaming setup for the real PC: [multilib], GPU drivers, Steam, Lutris,
+# Gaming setup for real hardware (not a VM): [multilib], GPU drivers, Steam, Lutris,
 # GameMode and MangoHud. Run after install.sh. Safe to run again.
 set -euo pipefail
 

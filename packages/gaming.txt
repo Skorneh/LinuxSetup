@@ -1,5 +1,5 @@
 # Gaming packages and Discord (official repos, most need [multilib]).
-# Installed by gaming.sh on the real PC only. GPU drivers are picked
+# Installed by gaming.sh (meant for real hardware, not a VM). GPU drivers are picked
 # automatically by gaming.sh and are not listed here.
 
 steam

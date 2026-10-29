@@ -1,0 +1,11 @@
+name: Idea
+description: Something SkorneX should do or do differently.
+labels: [idea]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+      description: If it's how Windows does something, say which part of Windows.
+    validations:
+      required: true
