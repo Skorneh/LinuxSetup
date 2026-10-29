@@ -2,7 +2,7 @@
 # One command to set up SkorneX on a fresh Arch install. Log in as your user
 # on the text console and run:
 #
-#   curl -fsSL https://raw.githubusercontent.com/Skorneh/LinuxSetup/claude/serene-babbage-p7zyak/bootstrap.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Skorneh/LinuxSetup/main/bootstrap.sh | bash
 #
 # It installs git, downloads this repo to ~/LinuxSetup, runs install.sh,
 # asks whether to run gaming.sh too, then offers to reboot.
@@ -25,7 +25,7 @@ main() {
     if [[ -d "$dir/.git" ]]; then
         git -C "$dir" pull --ff-only </dev/tty
     else
-        git clone "$repo" "$dir" </dev/tty
+        git clone -b main "$repo" "$dir" </dev/tty
     fi
 
     SKORNEX_BOOTSTRAP=1 "$dir/install.sh" </dev/tty

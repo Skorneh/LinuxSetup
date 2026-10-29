@@ -18,6 +18,7 @@ stow
 unzip
 pciutils
 fd
+nano
 xdg-utils
 gettext
 

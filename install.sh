@@ -28,6 +28,16 @@ sudo timedatectl set-ntp true
 sudo systemctl restart systemd-timesyncd 2>/dev/null || true
 
 # --- 1. Official packages ---
+# SkorneX uses PipeWire for sound. If archinstall set up PulseAudio or JACK
+# instead, remove them first: they conflict with PipeWire's replacements and
+# the install would stop.
+mapfile -t old_audio < <(pacman -Qq pulseaudio pulseaudio-alsa pulseaudio-bluetooth pulseaudio-jack \
+    pulseaudio-equalizer pulseaudio-zeroconf pulseaudio-lirc pulseaudio-rtp jack2 2>/dev/null || true)
+if ((${#old_audio[@]})); then
+    info "Replacing ${old_audio[*]} with PipeWire..."
+    sudo pacman -Rdd --noconfirm "${old_audio[@]}"
+fi
+
 info "Updating system and installing base packages..."
 mapfile -t pkgs < <(read_list "$REPO_DIR/packages/pkglist.txt")
 sudo pacman -Syu --needed --noconfirm "${pkgs[@]}"
@@ -145,6 +155,15 @@ fi
 # --- 9. Services ---
 info "Enabling services..."
 sudo systemctl enable NetworkManager.service greetd.service
+# NetworkManager runs the network from the next boot on. If archinstall set up
+# a different network service, turn it off then so they don't fight. It keeps
+# running until the restart, so the install doesn't lose its connection.
+for svc in systemd-networkd.service iwd.service dhcpcd.service; do
+    if systemctl is-enabled -q "$svc" 2>/dev/null; then
+        info "Switching from $svc to NetworkManager after the restart..."
+        sudo systemctl disable "$svc"
+    fi
+done
 systemctl --user enable pipewire.socket pipewire-pulse.socket wireplumber.service 2>/dev/null \
     || warn "Couldn't enable PipeWire user services now; they normally start on their own at login."
 

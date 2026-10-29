@@ -90,8 +90,11 @@ Boot the Arch ISO and run `archinstall`. Choose:
 
 - **Profile:** Minimal
 - **User:** create your user and give it sudo (superuser) rights
-- **Network:** NetworkManager
-- **Audio:** PipeWire
+- **Network:** NetworkManager (best). Any choice that gets you online after
+  the reboot works; the setup switches it to NetworkManager. "No network
+  configuration" leaves you offline, so don't pick that one.
+- **Audio:** PipeWire, or anything. The setup installs PipeWire and replaces
+  PulseAudio if it's there.
 
 Reboot into the new system and log in on the text console.
 
@@ -100,7 +103,7 @@ Reboot into the new system and log in on the text console.
 One command does it all:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Skorneh/LinuxSetup/claude/serene-babbage-p7zyak/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Skorneh/LinuxSetup/main/bootstrap.sh | bash
 ```
 
 It asks for your password, downloads this repo to `~/LinuxSetup`, runs
@@ -113,7 +116,7 @@ into it. To do the same by hand:
 
 ```bash
 sudo pacman -S --needed git
-git clone https://github.com/Skorneh/LinuxSetup.git ~/LinuxSetup
+git clone -b main https://github.com/Skorneh/LinuxSetup.git ~/LinuxSetup
 ~/LinuxSetup/install.sh
 sudo reboot
 ```
