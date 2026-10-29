@@ -1,0 +1,32 @@
+{
+    "archinstall-language": "English",
+    "audio_config": {
+        "audio": "pipewire"
+    },
+    "custom_commands": [
+        "git clone https://github.com/Skorneh/LinuxSetup.git /tmp/skornex && bash /tmp/skornex/archinstall/firstboot-setup.sh"
+    ],
+    "hostname": "skornex",
+    "kernels": [
+        "linux"
+    ],
+    "locale_config": {
+        "kb_layout": "us",
+        "sys_enc": "UTF-8",
+        "sys_lang": "en_US"
+    },
+    "network_config": {
+        "type": "nm"
+    },
+    "ntp": true,
+    "packages": [
+        "git"
+    ],
+    "profile_config": {
+        "profile": {
+            "main": "Minimal"
+        }
+    },
+    "swap": true,
+    "timezone": "America/Boise"
+}

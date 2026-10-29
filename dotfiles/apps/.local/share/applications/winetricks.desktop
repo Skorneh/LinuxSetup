@@ -1,0 +1,7 @@
+[Desktop Entry]
+# Hidden by SkorneX: Winetricks is a helper that Lutris runs behind the
+# scenes to add Windows parts (fonts, DirectX, Visual C++) to a game.
+# Opening it by hand isn't needed. Delete this file to show it again.
+Type=Application
+Name=Winetricks
+Hidden=true

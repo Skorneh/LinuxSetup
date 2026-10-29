@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# SkorneX first boot (run once by skornex-firstboot.service, as root).
+# Runs install.sh as you, with progress on screen, then restarts into the
+# lock screen. If it fails, you get the normal text login and can run
+# ~/LinuxSetup/install.sh yourself. Everything is logged to
+# /var/log/skornex-firstboot.log.
+set -uo pipefail
+
+user="$1"
+home="$(getent passwd "$user" | cut -d: -f6)"
+log=/var/log/skornex-firstboot.log
+sudoers=/etc/sudoers.d/90-skornex-firstboot
+exec > >(tee -a "$log") 2>&1
+
+clear
+echo "=== SkorneX: setting up your desktop ==="
+echo "This takes 10-30 minutes. The PC restarts by itself when it's done."
+echo
+
+echo "Waiting for the internet..."
+for _ in $(seq 60); do
+    curl -sI --max-time 5 https://archlinux.org >/dev/null && break
+    sleep 5
+done
+
+# install.sh uses sudo. Nobody is there to type a password, so allow it
+# without one until setup ends.
+echo "$user ALL=(ALL) NOPASSWD: ALL" > "$sudoers"
+chmod 440 "$sudoers"
+
+runuser -u "$user" -- env HOME="$home" USER="$user" LOGNAME="$user" \
+    bash -c 'cd ~/LinuxSetup && ./install.sh'
+status=$?
+
+rm -f "$sudoers" /var/lib/skornex-firstboot
+systemctl disable skornex-firstboot.service
+
+echo
+if ((status == 0)); then
+    echo "=== SkorneX is set up. Restarting in 10 seconds... ==="
+    sleep 10
+    systemctl reboot --no-block
+else
+    echo "=== SkorneX setup FAILED (see $log). ==="
+    echo "Log in, check your internet connection, and run:  ~/LinuxSetup/install.sh"
+    sleep 30
+fi
