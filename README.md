@@ -12,7 +12,7 @@ tool I own.
 | Path | What it does |
 |---|---|
 | `install.sh` | Installs everything, links the configs, applies the colors, sets up booting straight to the lock screen, debloats Firefox. Adds the guest agent in a Proxmox VM. |
-| `gaming.sh` | Real PC only: enables `[multilib]`, detects your GPU and installs drivers, then Steam, Lutris, GameMode, MangoHud. |
+| `gaming.sh` | Real PC only: enables `[multilib]`, detects your GPU and installs drivers, then Steam, Lutris, GameMode, MangoHud and Discord. |
 | `packages/` | Package lists: `pkglist.txt` (official repos), `aurlist.txt` (AUR), `gaming.txt`, and `removelist.txt` (old packages to remove). |
 | `dotfiles/apps/` | App list tweaks: kitty shown as Terminal, Mousepad as Notepad, Paint and Task Manager added, and two broken webcam test tools (from ffmpeg) hidden. |
 | `dotfiles/` | Config files, linked into `~` with GNU Stow. Each folder mirrors your home folder. |
@@ -65,7 +65,7 @@ Works like the Windows taskbar:
 - **Terminal:** kitty, shown as Terminal (Ctrl+Alt+T).
 - **Notepad:** Mousepad, shown as Notepad. Tabs, line numbers and syntax
   colors; opens `.sh`, `.md` and other text files when you double-click them.
-- **Firefox** (debloated), **Discord**.
+- **Firefox** (debloated). **Discord** comes with `gaming.sh`.
 - **Xwayland** runs older X11 apps (Steam, Wine games) inside labwc.
 
 ## Colors

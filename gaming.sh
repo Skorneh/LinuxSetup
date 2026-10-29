@@ -59,7 +59,7 @@ if ((${#drivers[@]} + ${#aur_drivers[@]})); then
 fi
 
 # --- 3. Gaming packages ---
-info "Installing Steam, Lutris, GameMode and MangoHud..."
+info "Installing Steam, Lutris, GameMode, MangoHud and Discord..."
 mapfile -t pkgs < <(read_list "$REPO_DIR/packages/gaming.txt")
 sudo pacman -S --needed --noconfirm "${pkgs[@]}"
 

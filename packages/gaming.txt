@@ -1,4 +1,4 @@
-# Gaming packages (official repos, most need [multilib]).
+# Gaming packages and Discord (official repos, most need [multilib]).
 # Installed by gaming.sh on the real PC only. GPU drivers are picked
 # automatically by gaming.sh and are not listed here.
 
@@ -14,3 +14,4 @@ mangohud
 lib32-mangohud
 vulkan-icd-loader
 lib32-vulkan-icd-loader
+discord

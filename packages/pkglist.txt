@@ -58,7 +58,6 @@ nemo
 gvfs
 mousepad
 firefox
-discord
 
 # --- Audio ---
 pipewire
