@@ -6,6 +6,7 @@ set -euo pipefail
 
 source "$(dirname "$0")/scripts/lib.sh"
 require_arch_user
+keep_sudo
 
 # --- 0. Correct clock ---
 # Downloads fail ("certificate is not yet valid") if the clock is wrong. That
@@ -149,9 +150,12 @@ systemctl --user enable pipewire.socket pipewire-pulse.socket wireplumber.servic
 
 echo
 info "Base setup done."
-cat <<EOF
+# bootstrap.sh asks about gaming and restarting itself.
+if [[ -z "${SKORNEX_BOOTSTRAP:-}" ]]; then
+    cat <<EOF
 Next steps:
-  1. Reboot:  sudo reboot
-  2. The PC starts at your lock screen. Type your password.
-  3. On the real PC only:   $REPO_DIR/gaming.sh
+  1. Restart:  sudo reboot
+  2. The PC starts at the lock screen. Type your password.
+  3. For games (GPU drivers, Steam, Lutris, Discord):  ~/LinuxSetup/gaming.sh
 EOF
+fi

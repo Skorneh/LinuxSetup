@@ -19,6 +19,16 @@ confirm() {
     [[ -z "$reply" || "$reply" =~ ^[Yy] ]]
 }
 
+# Ask for the sudo password once, then keep it fresh in the background until
+# the script ends, so long steps (building paru, big downloads) don't ask again.
+keep_sudo() {
+    sudo -v || die "This needs your password (sudo)."
+    while kill -0 "$$" 2>/dev/null; do
+        sudo -n -v 2>/dev/null
+        sleep 50
+    done >/dev/null 2>&1 &
+}
+
 require_arch_user() {
     [[ -f /etc/arch-release ]] || die "This doesn't look like Arch Linux."
     [[ $EUID -ne 0 ]] || die "Run this as your normal user, not root. It uses sudo when needed."

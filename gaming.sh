@@ -5,6 +5,7 @@ set -euo pipefail
 
 source "$(dirname "$0")/scripts/lib.sh"
 require_arch_user
+keep_sudo
 
 virt="$(systemd-detect-virt 2>/dev/null || true)"
 if [[ -n "$virt" && "$virt" != none ]]; then
@@ -67,10 +68,12 @@ sudo pacman -S --needed --noconfirm "${pkgs[@]}"
 sudo usermod -aG gamemode "$USER"
 
 echo
-info "Gaming setup done. Reboot so the GPU driver loads."
+info "Gaming setup done. Restart so the graphics driver loads."
 cat <<EOF
-After rebooting:
-  - Steam: open it, then Settings > Compatibility > "Enable Steam Play for all other titles".
-  - WoW:   open Lutris, search "Battle.net", install it, log in, install WoW.
-  - Optional: in Lutris, set Battle.net's launch options to use GameMode and MangoHud.
+After restarting:
+  - Steam: Settings > Compatibility > turn on "Enable Steam Play for all other titles"
+    to play Windows games.
+  - Other launchers (Battle.net, Epic, GOG...): open Lutris, search for the
+    launcher, and install it.
+  - FPS counter: add  mangohud %command%  to a Steam game's launch options.
 EOF

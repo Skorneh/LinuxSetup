@@ -28,7 +28,7 @@ main() {
         git clone "$repo" "$dir" </dev/tty
     fi
 
-    "$dir/install.sh" </dev/tty
+    SKORNEX_BOOTSTRAP=1 "$dir/install.sh" </dev/tty
 
     echo
     read -rp "Also install gaming (GPU drivers, Steam, Lutris, Discord)? [y/N] " reply </dev/tty

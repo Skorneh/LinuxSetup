@@ -131,7 +131,7 @@ It shows the GPU it found and the driver packages it picked, and asks before
 installing them. After rebooting:
 
 - **Steam:** Settings > Compatibility > turn on "Enable Steam Play for all other titles".
-- **WoW:** open Lutris, search for **Battle.net**, install it, log in, and install WoW from there.
+- **Other launchers** (Battle.net, Epic, GOG…): open Lutris, search for the launcher, install it, and install your games from there.
 
 ## Shortcuts
 
