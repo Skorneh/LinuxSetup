@@ -11,7 +11,7 @@ tool I own.
 
 | Path | What it does |
 |---|---|
-| `archinstall/` | Answers for `archinstall` and the first-boot setup, so a new PC installs almost by itself (see Setting up a machine). |
+| `bootstrap.sh` | The one command for a fresh Arch install: downloads the repo, runs `install.sh`, offers `gaming.sh`. |
 | `install.sh` | Installs everything, links the configs, applies the colors, sets up booting straight to the lock screen, debloats Firefox. Adds the guest agent in a Proxmox VM. |
 | `gaming.sh` | Real PC only: enables `[multilib]`, detects your GPU and installs drivers, then Steam, Lutris, GameMode, MangoHud and Discord. |
 | `packages/` | Package lists: `pkglist.txt` (official repos), `aurlist.txt` (AUR), `gaming.txt`, and `removelist.txt` (old packages to remove). |
@@ -84,52 +84,43 @@ the dark `adw-gtk3-dark` theme.
 
 ## Setting up a machine
 
-### 1. Install Arch (the easy way)
+### 1. Install Arch
 
-Boot the Arch ISO, connect to the internet (plugged in works by itself; for
-Wi-Fi run `iwctl`), then:
+Boot the Arch ISO and run `archinstall`. Choose:
+
+- **Profile:** Minimal
+- **User:** create your user and give it sudo (superuser) rights
+- **Network:** NetworkManager
+- **Audio:** PipeWire
+
+Reboot into the new system and log in on the text console.
+
+### 2. Run the setup
+
+One command does it all:
 
 ```bash
-curl -Lo skornex.json https://raw.githubusercontent.com/Skorneh/LinuxSetup/claude/serene-babbage-p7zyak/archinstall/config.json
-archinstall --config skornex.json
+curl -fsSL https://raw.githubusercontent.com/Skorneh/LinuxSetup/claude/serene-babbage-p7zyak/bootstrap.sh | bash
 ```
 
-The archinstall menu opens with the SkorneX choices filled in (Minimal
-profile, NetworkManager, PipeWire, zram swap, US English, Boise time). You
-only set:
+It asks for your password, downloads this repo to `~/LinuxSetup`, runs
+`install.sh`, asks whether to install gaming too (`gaming.sh`, step 3), and
+then offers to restart. The PC then starts at your lock screen. Type your
+password and you're on the desktop.
 
-- **Disks** (Disk configuration): pick the drive. It gets erased.
-- **Authentication**: create your user and give it sudo (superuser) rights.
-  Set a root password too if you like.
-
-Then choose **Install**. When it's done, reboot and take out the USB stick.
-The first boot shows "SkorneX: setting up your desktop" and runs `install.sh`
-by itself (10–30 minutes), then restarts into your lock screen. If something
-goes wrong, you get a text login instead: log in and run
-`~/LinuxSetup/install.sh`. The log is `/var/log/skornex-firstboot.log`.
-
-`archinstall/config.json` holds the filled-in choices, and
-`archinstall/firstboot-setup.sh` sets up the first-boot run.
-
-### 2. Or install by hand
-
-Run `archinstall` without the config and choose: Profile **Minimal**, your
-user with sudo rights, Network **NetworkManager**, Audio **PipeWire**. Reboot,
-log in on the text console, then:
+The repo needs to live at `~/LinuxSetup`, because your configs are symlinks
+into it. To do the same by hand:
 
 ```bash
 sudo pacman -S --needed git
 git clone https://github.com/Skorneh/LinuxSetup.git ~/LinuxSetup
-cd ~/LinuxSetup
-./install.sh
+~/LinuxSetup/install.sh
 sudo reboot
 ```
 
-The repo needs to live at `~/LinuxSetup`, because your configs are symlinks
-into it. After the reboot, the PC starts at your lock screen. Type your
-password and you're on the desktop.
-
 ### 3. Gaming (real PC only)
+
+If you said no to gaming in step 2, run it any time:
 
 ```bash
 ~/LinuxSetup/gaming.sh
@@ -202,7 +193,7 @@ In `archinstall`, add `qemu-guest-agent` under **Additional packages**.
 Otherwise Proxmox's Shutdown button hangs waiting for the agent. Keep the VM
 out of HA and replication; it's temporary.
 
-Run step 1 only, and take a snapshot right after `archinstall` so you can
+Run steps 1–2 only, and take a snapshot right after `archinstall` so you can
 roll back. When you're done, Shutdown → More → Remove to free its resources.
 `gaming.sh` also runs in a VM to check that it installs: it warns you, skips
 the GPU drivers, and installs Steam and the rest. Games will be slow there.
