@@ -244,6 +244,11 @@ def main():
         window.set_default_size(720, 600)
         window.set_icon_name(ICON)
         window.add(Page())
+        # Ctrl+W closes it, like most windows.
+        close = Gio.SimpleAction.new("close", None)
+        close.connect("activate", lambda *_: window.close())
+        window.add_action(close)
+        app.set_accels_for_action("win.close", ["<Ctrl>w"])
         window.show_all()
     app.connect("activate", activate)
     sys.exit(app.run(sys.argv))

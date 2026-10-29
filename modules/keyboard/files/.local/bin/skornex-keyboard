@@ -18,7 +18,7 @@ import sys
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import GLib, Gtk  # noqa: E402
+from gi.repository import Gio, GLib, Gtk  # noqa: E402
 
 TITLE = "Keyboard"
 ICON = "input-keyboard"
@@ -215,6 +215,11 @@ def main():
         scroller = Gtk.ScrolledWindow()
         scroller.add(Page())
         window.add(scroller)
+        # Ctrl+W closes it, like most windows.
+        close = Gio.SimpleAction.new("close", None)
+        close.connect("activate", lambda *_: window.close())
+        window.add_action(close)
+        app.set_accels_for_action("win.close", ["<Ctrl>w"])
         window.show_all()
     app.connect("activate", activate)
     sys.exit(app.run(sys.argv))

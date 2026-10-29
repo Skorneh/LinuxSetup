@@ -224,7 +224,15 @@ class App(Gtk.Application):
     def do_command_line(self, command_line):
         args = command_line.get_arguments()[1:]
         Gtk.Settings.get_default().props.gtk_application_prefer_dark_theme = True
-        window = self.get_windows()[0] if self.get_windows() else SettingsWindow(self)
+        if self.get_windows():
+            window = self.get_windows()[0]
+        else:
+            window = SettingsWindow(self)
+            # Ctrl+W closes it, like most windows.
+            close = Gio.SimpleAction.new("close", None)
+            close.connect("activate", lambda *_: window.close())
+            window.add_action(close)
+            self.set_accels_for_action("win.close", ["<Ctrl>w"])
         window.show_all()
         if args:
             window.select(args[0])

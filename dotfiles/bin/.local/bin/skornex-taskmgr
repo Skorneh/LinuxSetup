@@ -367,7 +367,8 @@ class TaskManager(Gtk.ApplicationWindow):
         if event.keyval == Gdk.KEY_Delete:
             self.end_task()
             return True
-        if event.keyval == Gdk.KEY_Escape:
+        ctrl_w = event.state & Gdk.ModifierType.CONTROL_MASK and Gdk.keyval_to_lower(event.keyval) == Gdk.KEY_w
+        if event.keyval == Gdk.KEY_Escape or ctrl_w:
             self.close()
             return True
         return False
