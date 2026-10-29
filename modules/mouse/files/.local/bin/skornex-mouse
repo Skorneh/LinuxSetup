@@ -109,10 +109,7 @@ class Page(Gtk.Box):
         self.switch("Natural scrolling", "touch_natural")
         self.switch("Turn off while typing", "dwt")
 
-        note = Gtk.Label(label="Changes apply as soon as you make them.", xalign=0)
-        note.get_style_context().add_class("dim-label")
-        self.pack_start(note, False, False, 8)
-        reset = Gtk.Button(label="Reset to defaults")
+        reset = Gtk.Button(label="Reset to default")
         reset.set_halign(Gtk.Align.START)
         reset.connect("clicked", lambda _b: self.reset())
         self.pack_start(reset, False, False, 0)

@@ -138,9 +138,6 @@ class Page(Gtk.Box):
         self.in_combo.connect("changed", lambda c: not self.loading and c.get_active_id()
                               and self.choose_mic(c.get_active_id()))
         self.pack_start(self.in_combo, False, False, 0)
-        gain_note = Gtk.Label(label="Volume (gain). Above 100% boosts a quiet microphone.", xalign=0)
-        gain_note.get_style_context().add_class("dim-label")
-        self.pack_start(gain_note, False, False, 0)
         self.in_volume, self.in_mute = self.volume_row("source", self.mic, 150)
         self.in_volume.add_mark(100, Gtk.PositionType.BOTTOM, "100%")
 
@@ -161,10 +158,8 @@ class Page(Gtk.Box):
         self.cap_apply.connect("clicked", lambda _b: self.apply_cap())
         level_row.pack_start(self.cap_apply, False, False, 0)
         self.pack_start(level_row, False, False, 0)
-        self.cap_note = Gtk.Label(xalign=0, wrap=True, label=(
-            "Loud sounds (shouting, laughing) are turned down to the cap; normal talking isn't "
-            "changed. Applying it stops all sound for a second."))
-        self.cap_note.get_style_context().add_class("dim-label")
+        self.cap_note = Gtk.Label(xalign=0, wrap=True)  # only for problems
+        self.cap_note.set_no_show_all(True)
         self.pack_start(self.cap_note, False, False, 0)
         self.cap_switch.connect("notify::active", lambda *_: self.apply_cap())
 
@@ -178,9 +173,6 @@ class Page(Gtk.Box):
         self.record_button.connect("clicked", lambda _b: self.record_test())
         test_row.pack_start(self.record_button, False, False, 0)
         self.pack_start(test_row, False, False, 0)
-        meter_note = Gtk.Label(label="Talk: the bar shows what apps hear, after the cap.", xalign=0)
-        meter_note.get_style_context().add_class("dim-label")
-        self.pack_start(meter_note, False, False, 0)
 
         self.pack_start(heading("Apps"), False, False, 0)
         self.apps = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
@@ -271,6 +263,7 @@ class Page(Gtk.Box):
         if self.state["cap"]:
             if not os.path.exists("/usr/lib/ladspa/fast_lookahead_limiter_1913.so"):
                 self.cap_note.set_text("The cap needs swh-plugins. Run: sudo pacman -S swh-plugins")
+                self.cap_note.show()
                 return
             os.makedirs(os.path.dirname(CAP_CONF), exist_ok=True)
             with open(CAP_CONF, "w") as f:
@@ -282,15 +275,12 @@ class Page(Gtk.Box):
                 pass
         self.stop_meter()
         self.set_sensitive(False)
-        self.cap_note.set_text("Applying…")
         subprocess.run(["systemctl", "--user", "restart", "pipewire", "pipewire-pulse", "wireplumber"])
         GLib.timeout_add_seconds(3, self.after_restart)
 
     def after_restart(self):
         pactl("set-default-source", CAP_NODE if self.state["cap"] else self.state["mic"])
         self.set_sensitive(True)
-        self.cap_note.set_text("Done. Loud sounds are now capped." if self.state["cap"]
-                               else "The cap is off.")
         self.load()
         self.start_meter()
         return False

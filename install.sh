@@ -186,13 +186,9 @@ systemctl --user enable pipewire.socket pipewire-pulse.socket wireplumber.servic
     || warn "Couldn't enable PipeWire user services now; they normally start on their own at login."
 
 echo
-info "Base setup done."
-# bootstrap.sh asks about gaming and restarting itself.
-if [[ -z "${SKORNEX_BOOTSTRAP:-}" ]]; then
-    cat <<EOF
-Next steps:
-  1. Restart:  sudo reboot
-  2. The PC starts at the lock screen. Type your password.
-  3. For games (GPU drivers, Steam, Lutris, Discord):  ~/LinuxSetup/gaming.sh
-EOF
+info "SkorneX $(cat "$REPO_DIR/VERSION") is installed."
+# On a first install from a text console (not through bootstrap.sh, which
+# restarts by itself), say how to get to the desktop.
+if [[ -z "${SKORNEX_BOOTSTRAP:-}" ]] && ! pgrep -x -u "$USER" labwc >/dev/null; then
+    echo "Restart to start SkorneX:  sudo reboot"
 fi

@@ -16,7 +16,7 @@ dig through: what you see is a handful of text files and small SkorneX tools.
   Battle.net, Epic, GOG…), GameMode, MangoHud and Discord.
 - **Starts at the lock screen:** turn the PC on, type your password, you're in.
 
-> SkorneX is a personal project in testing. Try it in a VM or on a spare PC
+> SkorneX is in alpha (version 0.x) and still in testing. Try it in a VM or on a spare PC
 > first, and expect rough edges. Found one? See [Reporting problems](#reporting-problems).
 
 ## Contents
@@ -301,6 +301,7 @@ include:
 | Path | What it does |
 |---|---|
 | `bootstrap.sh` | The one-command setup: asks about gaming, downloads the repo, runs `install.sh` (and `gaming.sh`), restarts. |
+| `VERSION` | SkorneX's version (still alpha, so 0.x). Updates shows it and the newest one online. |
 | `install.sh` | Installs the packages, links the configs, applies the colors, sets up the lock screen login, debloats Firefox. Safe to run again. |
 | `gaming.sh` | `[multilib]`, GPU drivers, and the gaming apps. Safe to run again. |
 | `packages/` | Package lists: `pkglist.txt` (official repos), `aurlist.txt` (AUR), `gaming.txt`, and `removelist.txt` (packages older versions of SkorneX used, removed on update). |

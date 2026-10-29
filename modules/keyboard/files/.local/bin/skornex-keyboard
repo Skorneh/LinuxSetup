@@ -91,10 +91,6 @@ class Page(Gtk.Box):
         self.pack_start(title, False, False, 0)
 
         self.pack_start(self.heading("Keyboard layouts"), False, False, 0)
-        hint = Gtk.Label(label="The first one is used when you log in. If a new layout doesn't "
-                         "work right away, log out and back in.", xalign=0, wrap=True)
-        hint.get_style_context().add_class("dim-label")
-        self.pack_start(hint, False, False, 0)
         self.layout_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         self.pack_start(self.layout_list, False, False, 0)
         add_row = Gtk.Box(spacing=8)
