@@ -160,4 +160,14 @@
     </keybind>
   </keyboard>
 
+  <!-- Mouse acceleration off: the pointer moves the same distance however fast
+       you move the mouse. Touchpads keep it, they feel wrong without it. -->
+  <libinput>
+    <device category="default">
+      <accelProfile>flat</accelProfile>
+    </device>
+    <device category="touchpad">
+      <accelProfile>adaptive</accelProfile>
+    </device>
+  </libinput>
 </labwc_config>

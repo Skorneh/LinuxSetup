@@ -135,16 +135,17 @@ fi
 # the first thing you see is hyprlock. After logging out you get a plain text
 # login (agreety) instead.
 info "Setting up login..."
+sudo install -Dm755 "$REPO_DIR/system/skornex-session" /usr/local/bin/skornex-session
 sudo tee /etc/greetd/config.toml >/dev/null <<EOF
 [terminal]
 vt = 1
 
 [initial_session]
-command = "env LOCK_ON_START=1 labwc"
+command = "env LOCK_ON_START=1 skornex-session"
 user = "$USER"
 
 [default_session]
-command = "agreety --cmd labwc"
+command = "agreety --cmd skornex-session"
 user = "greeter"
 EOF
 

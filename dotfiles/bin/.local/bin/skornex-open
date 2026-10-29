@@ -1,0 +1,16 @@
+#!/bin/sh
+# skornex-open APP_ID COMMAND [ARGS...]: open files in an app that keeps one
+# window (like Notepad), then bring that window to the front.
+#
+# On Wayland an app may only jump in front of others with a token from the
+# program you clicked in. When an app hands a file to its already-open
+# window, that token often gets lost, so double-clicking an open file in
+# Files did nothing visible. SkorneXBar can always bring a window forward, so
+# it does it instead.
+app=$1
+shift
+"$@" &
+for last; do :; done
+name=$(basename "${last:-}" 2>/dev/null)
+sleep 0.3
+exec "$HOME/.local/bin/skornex-bar" raise "$app" "$name"

@@ -27,7 +27,7 @@ APP_ID = "dev.skornex.Mouse"
 STATE = os.path.expanduser("~/.config/skornex/mouse.json")
 CHANGES = os.path.expanduser("~/.config/skornex/labwc")
 DEFAULTS = {
-    "speed": 0.0, "accel": True, "natural": False, "left_handed": False,
+    "speed": 0.0, "accel": False, "natural": False, "left_handed": False,
     "scroll": 1.0, "double_click": 500, "cursor": 24,
     "tap": True, "touch_natural": True, "dwt": True,
 }
@@ -67,6 +67,7 @@ def save(s):
     </device>
     <device category="touchpad">
       <pointerSpeed>{s["speed"]:.2f}</pointerSpeed>
+      <accelProfile>adaptive</accelProfile>
       <tap>{yes(s["tap"])}</tap>
       <naturalScroll>{yes(s["touch_natural"])}</naturalScroll>
       <disableWhileTyping>{yes(s["dwt"])}</disableWhileTyping>

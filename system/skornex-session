@@ -1,0 +1,6 @@
+#!/bin/sh
+# Starts SkorneX (the labwc desktop) for whoever logs in. greetd runs this.
+# Adds ~/.local/bin to PATH first, so everything started on the desktop
+# (apps, Files, keyboard shortcuts) can find the SkorneX tools.
+export PATH="$HOME/.local/bin:$PATH"
+exec labwc "$@"

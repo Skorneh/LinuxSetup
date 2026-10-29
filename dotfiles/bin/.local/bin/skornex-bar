@@ -694,6 +694,20 @@ class Bar(Gtk.Window):
         seats = self.screen.get_seats()
         return seats[0] if seats else None
 
+    def raise_app(self, app_id, hint=""):
+        """Brings an app's window to the front (skornex-open uses this): the
+        window whose title mentions `hint` (a file name), else the one used last."""
+        wins = [w for w in self.screen.get_windows() if w not in self.closed
+                and app_id.lower() in [n.lower() for n in (w.get_class_ids() or [])]]
+        if not wins:
+            return False
+        named = [w for w in wins if hint and hint in (w.get_name() or "")]
+        window = (named or sorted(wins, key=lambda w: self.last_active.get(w, 0)))[-1]
+        if window.is_minimized():
+            AppButton.try_(window.set_minimized, False)
+        AppButton.try_(window.activate, self.seat(), 0)
+        return False
+
     def watch_window(self, window):
         for sig in ("state-changed", "class-changed", "name-changed", "icon-changed"):
             window.connect(sig, lambda *_: self.schedule_sync())
@@ -1557,6 +1571,10 @@ class SkorneXBar(Gtk.Application):
             self.bar = Bar(self)
         if args and args[0] in ("search", "power", "run"):
             self.bar.toggle(args[0])
+        elif args[:1] == ["raise"] and len(args) >= 2:
+            # A moment later, so the app has switched to the file first.
+            hint = args[2] if len(args) > 2 else ""
+            GLib.timeout_add(300, self.bar.raise_app, args[1], hint)
         return 0
 
 

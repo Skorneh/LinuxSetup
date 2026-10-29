@@ -1,12 +1,13 @@
 [Desktop Entry]
 # Mousepad, shown as "Notepad". Same name as Mousepad's own entry, so this
 # one takes its place. Opens .sh, .md and other text files by default.
+# skornex-open brings Notepad to the front even when the file is already open.
 Version=1.0
 Type=Application
 Name=Notepad
 GenericName=Text Editor
 Comment=Edit text files
-Exec=mousepad %U
+Exec=skornex-open org.xfce.mousepad mousepad %U
 Icon=org.xfce.mousepad
 Terminal=false
 StartupNotify=true
