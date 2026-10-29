@@ -87,6 +87,16 @@ find "$HOME/.config" "$HOME/.local" -xtype l -lname '*LinuxSetup/dotfiles/*' -de
 info "Applying colors..."
 "$HOME/.local/bin/skornex-theme"
 
+# --- 5b. Reload the running desktop ---
+# Works over SSH too. labwc rereads its settings and its app list on SIGHUP
+# (without that, new apps get labwc's own logo as their title bar icon until
+# you log out), and SkorneXBar and SkorneXDesktop restart with the new code.
+if pgrep -x -u "$USER" labwc >/dev/null; then
+    info "Reloading the desktop..."
+    pkill -HUP -x -u "$USER" labwc
+    pkill -u "$USER" -f '\.local/bin/skornex-bar( desktop)?$' || true
+fi
+
 # --- 6. Boot straight to the lock screen ---
 # greetd logs you in once at boot and starts labwc with LOCK_ON_START set, so
 # the first thing you see is hyprlock. After logging out you get a plain text
