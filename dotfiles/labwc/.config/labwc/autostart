@@ -9,6 +9,10 @@ if [ -n "$LOCK_ON_START" ]; then
     sleep 2
 fi
 
+# Your screen layout (from Display settings) first, so the taskbar and the
+# desktop start on the right monitors.
+[ -x ~/.config/skornex/autostart.d/display ] && ~/.config/skornex/autostart.d/display >/dev/null 2>&1
+
 # SkorneXBar (taskbar) and SkorneXDesktop (Recycle Bin). If either ever
 # crashes it starts again a second later, and what went wrong is saved in
 # ~/.cache/skornex-bar.log or ~/.cache/skornex-desktop.log.
@@ -29,6 +33,7 @@ dunst >/dev/null 2>&1 &
 # Settings modules put things to run at login here (Display: your screen
 # layout; Updates: the update reminder).
 for script in ~/.config/skornex/autostart.d/*; do
+    [ "${script##*/}" = display ] && continue  # already done above
     [ -x "$script" ] && "$script" >/dev/null 2>&1 &
 done
 /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 >/dev/null 2>&1 &

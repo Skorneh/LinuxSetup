@@ -179,8 +179,8 @@ remove one without touching the others.
 
 | Module | Search for | What it does |
 |---|---|---|
-| `display` | Display settings | Resolution, refresh rate, scale, orientation, and where each monitor sits. Asks "Keep these display settings?" and goes back after 15 seconds if you can't see anything. |
-| `sound` | Sound settings | Speakers or headphones and their volume; your microphone with a boost up to 150%, a cap on how loud you can get, a live level meter and a record-and-play-back test; each app's volume. |
+| `display` | Display settings | Resolution, refresh rate, scale, orientation; drag the monitors into place (they snap edge to edge, no gaps); pick the main display for the taskbar and desktop icons. Asks "Keep these display settings?" and goes back after 15 seconds if you can't see anything. |
+| `sound` | Sound settings | Speakers or headphones and their volume; your microphone with a boost up to 150%, a cap on how loud you can get (a limiter, like OBS's: peaks never go past the line on the meter), a live level meter and a record-and-play-back test; each app's volume. |
 | `mouse` | Mouse settings | Pointer speed, acceleration, scroll speed and direction, swap buttons, double-click speed, pointer size, touchpad tap-to-click. |
 | `keyboard` | Keyboard settings | Keyboard layouts (languages) and the keys that switch them, key repeat, Num Lock. |
 | `shortcuts` | Keyboard shortcuts | Every desktop-wide shortcut in one list: change its keys, turn it off, or add your own that opens an app, runs a command, presses other keys, or clicks the mouse (for example Alt+1 = left click). Shortcuts inside apps (Ctrl+C in Firefox) belong to each app. |
@@ -207,7 +207,7 @@ already made.
 | Win+Up / Win+Down | Maximize / minimize |
 | Win+Shift+Left / Right | Move the window to the monitor on that side (needs two monitors) |
 | Win+Shift+Up / Down | Stretch the window to the full screen height / restore it |
-| Alt+Tab | Switch windows, with previews |
+| Alt+Tab | Switch windows, with previews (on the monitor you're working on) |
 | Alt+F4 | Close the window |
 | Ctrl+Alt+Q | Force-quit the window you're in |
 | Ctrl+Shift+Esc | Task Manager |

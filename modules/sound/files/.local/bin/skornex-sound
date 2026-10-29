@@ -146,18 +146,16 @@ class Page(Gtk.Box):
         self.cap_switch = Gtk.Switch(active=self.state["cap"], valign=Gtk.Align.CENTER)
         cap_row.pack_start(self.cap_switch, False, False, 0)
         self.pack_start(cap_row, False, False, 0)
-        level_row = Gtk.Box(spacing=6)
-        level_row.pack_start(Gtk.Label(label="Lower cap"), False, False, 0)
+        # The cap level, like OBS's limiter: nothing gets louder than this.
         self.cap_level = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, -20, -1, 1)
         self.cap_level.set_value(self.state["limit"])
-        self.cap_level.set_draw_value(False)
-        self.cap_level.set_hexpand(True)
-        level_row.pack_start(self.cap_level, True, True, 0)
-        level_row.pack_start(Gtk.Label(label="Higher cap"), False, False, 0)
-        self.cap_apply = Gtk.Button(label="Apply cap")
-        self.cap_apply.connect("clicked", lambda _b: self.apply_cap())
-        level_row.pack_start(self.cap_apply, False, False, 0)
-        self.pack_start(level_row, False, False, 0)
+        self.cap_level.set_value_pos(Gtk.PositionType.RIGHT)
+        self.cap_level.connect("format-value", lambda _s, v: f"{v:.0f} dB")
+        self.cap_level.connect("value-changed", lambda *_: self.meter.queue_draw())
+        # Applied when you let go of the slider (it restarts the sound system).
+        self.cap_level.connect("button-release-event", lambda *_: self.cap_switch.get_active()
+                               and GLib.idle_add(self.apply_cap) and False)
+        self.pack_start(self.cap_level, False, False, 0)
         self.cap_note = Gtk.Label(xalign=0, wrap=True)  # only for problems
         self.cap_note.set_no_show_all(True)
         self.pack_start(self.cap_note, False, False, 0)
@@ -165,9 +163,11 @@ class Page(Gtk.Box):
 
         test_row = Gtk.Box(spacing=10)
         test_row.pack_start(Gtk.Label(label="Test"), False, False, 0)
-        self.meter = Gtk.LevelBar(min_value=0, max_value=1)
+        self.meter = Gtk.DrawingArea()
+        self.meter.set_size_request(-1, 14)
         self.meter.set_hexpand(True)
         self.meter.set_valign(Gtk.Align.CENTER)
+        self.meter.connect("draw", self.draw_meter)
         test_row.pack_start(self.meter, True, True, 0)
         self.record_button = Gtk.Button(label=f"Record {TEST_SECONDS} seconds and play back")
         self.record_button.connect("clicked", lambda _b: self.record_test())
@@ -278,8 +278,19 @@ class Page(Gtk.Box):
         subprocess.run(["systemctl", "--user", "restart", "pipewire", "pipewire-pulse", "wireplumber"])
         GLib.timeout_add_seconds(3, self.after_restart)
 
-    def after_restart(self):
-        pactl("set-default-source", CAP_NODE if self.state["cap"] else self.state["mic"])
+    def after_restart(self, tries=0):
+        """Waits for the sound system to come back, then picks the microphone."""
+        names = [d["name"] for d in pactl_json("list", "sources")]
+        want = CAP_NODE if self.state["cap"] else self.state["mic"]
+        if want not in names and tries < 20:
+            GLib.timeout_add(500, self.after_restart, tries + 1)
+            return False
+        if want in names:
+            pactl("set-default-source", want)
+            self.cap_note.hide()
+        elif self.state["cap"]:
+            self.cap_note.set_text("Couldn't turn on the cap.")
+            self.cap_note.show()
         self.set_sensitive(True)
         self.load()
         self.start_meter()
@@ -315,7 +326,7 @@ class Page(Gtk.Box):
         peak = max((abs(x) for x in samples), default=0) / 32768
         level = max(0.0, min(1.0, (20 * math.log10(peak) + 60) / 60)) if peak > 0 else 0.0
         self.level = max(level, self.level - 0.06)  # rises fast, falls slowly
-        self.meter.set_value(self.level)
+        self.meter.queue_draw()
         self.read_meter(stream)
 
     def stop_meter(self):
@@ -323,7 +334,25 @@ class Page(Gtk.Box):
             self.cancel.cancel()
             self.meter_proc.force_exit()
             self.meter_proc = None
-        self.meter.set_value(0)
+        self.level = 0.0
+        self.meter.queue_draw()
+
+    def draw_meter(self, widget, cr):
+        """-60 dB on the left, 0 dB on the right; the line is the cap."""
+        w, h = widget.get_allocated_width(), widget.get_allocated_height()
+        cr.set_source_rgba(1, 1, 1, 0.08)
+        cr.rectangle(0, 0, w, h)
+        cr.fill()
+        cap = (self.cap_level.get_value() + 60) / 60
+        loud = self.cap_switch.get_active() and self.level >= cap - 0.01
+        cr.set_source_rgb(0.9, 0.6, 0.2) if loud else cr.set_source_rgb(0.3, 0.75, 0.45)
+        cr.rectangle(0, 0, w * self.level, h)
+        cr.fill()
+        if self.cap_switch.get_active():
+            cr.set_source_rgb(0.95, 0.95, 0.95)
+            cr.rectangle(int(w * cap), 0, 2, h)
+            cr.fill()
+        return False
 
     def record_test(self):
         path = os.path.join(tempfile.gettempdir(), f"skornex-mic-test-{os.getpid()}.wav")

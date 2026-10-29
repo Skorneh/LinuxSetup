@@ -9,6 +9,7 @@
 # it does it instead.
 app=$1
 shift
+echo "$(date '+%F %T') open $app: $*" >> "$HOME/.cache/skornex-open.log"
 "$@" &
 for last; do :; done
 name=$(basename "${last:-}" 2>/dev/null)

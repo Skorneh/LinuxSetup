@@ -32,7 +32,7 @@
 
   <!-- Alt+Tab: every window separately, with a preview. -->
   <windowSwitcher preview="yes" outlines="yes">
-    <osd show="yes" style="thumbnail" />
+    <osd show="yes" style="thumbnail" output="focused" />
   </windowSwitcher>
 
   <!--

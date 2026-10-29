@@ -131,8 +131,45 @@ def label(text, *classes):
     return widget
 
 
-def make_layer(window, layer, anchors, keyboard=GtkLayerShell.KeyboardMode.NONE, namespace="skornex"):
+# The main display (from Display settings): the output's name, like DP-1.
+MAIN_DISPLAY_FILE = os.path.join(CONFIG, "main-display")
+_main_monitor = []
+
+
+def main_monitor():
+    """The monitor for the taskbar, its pop-ups and the desktop icons: the main
+    display picked in Display settings, else the first one."""
+    if _main_monitor:
+        return _main_monitor[0]
+    display = Gdk.Display.get_default()
+    monitors = [display.get_monitor(i) for i in range(display.get_n_monitors())]
+    chosen = None
+    try:
+        with open(MAIN_DISPLAY_FILE) as f:
+            name = f.read().strip()
+    except OSError:
+        name = ""
+    if name:
+        # GTK doesn't know output names; match by position instead.
+        try:
+            outputs = json.loads(run("wlr-randr", "--json") or "[]")
+        except ValueError:
+            outputs = []
+        pos = next(((o["position"]["x"], o["position"]["y"]) for o in outputs
+                    if o.get("name") == name and o.get("enabled")), None)
+        chosen = next((m for m in monitors if pos and
+                       (m.get_geometry().x, m.get_geometry().y) == pos), None)
+    chosen = chosen or display.get_primary_monitor() or (monitors[0] if monitors else None)
+    _main_monitor.append(chosen)
+    return chosen
+
+
+def make_layer(window, layer, anchors, keyboard=GtkLayerShell.KeyboardMode.NONE, namespace="skornex",
+               monitor=None):
     GtkLayerShell.init_for_window(window)
+    monitor = monitor or main_monitor()
+    if monitor:
+        GtkLayerShell.set_monitor(window, monitor)
     GtkLayerShell.set_namespace(window, namespace)
     GtkLayerShell.set_layer(window, layer)
     for edge in anchors:
@@ -700,9 +737,11 @@ class Bar(Gtk.Window):
         wins = [w for w in self.screen.get_windows() if w not in self.closed
                 and app_id.lower() in [n.lower() for n in (w.get_class_ids() or [])]]
         if not wins:
+            print(f"skornex-bar: raise: no window for {app_id}", file=sys.stderr, flush=True)
             return False
         named = [w for w in wins if hint and hint in (w.get_name() or "")]
         window = (named or sorted(wins, key=lambda w: self.last_active.get(w, 0)))[-1]
+        print(f"skornex-bar: raise: {app_id} '{window.get_name()}'", file=sys.stderr, flush=True)
         if window.is_minimized():
             AppButton.try_(window.set_minimized, False)
         AppButton.try_(window.activate, self.seat(), 0)
@@ -1291,6 +1330,84 @@ class DesktopIcon(Gtk.EventBox):
         return True
 
 
+class Wallpaper:
+    """Paints the wallpaper (from the Personalize settings module) under the
+    desktop, on every monitor, and follows its file live."""
+
+    def __init__(self):
+        self.widgets = []
+        self.cache = {}
+        self.monitor = Gio.File.new_for_path(WALLPAPER_FILE).monitor_file(Gio.FileMonitorFlags.NONE, None)
+        self.monitor.connect("changed", lambda *_: GLib.idle_add(self.load))
+        self.load()
+
+    def attach(self, widget):
+        self.widgets.append(widget)
+        widget.connect("draw", self.draw)
+
+    def load(self):
+        conf = {}
+        try:
+            with open(WALLPAPER_FILE) as f:
+                for line in f:
+                    if "=" in line and not line.startswith("#"):
+                        key, value = line.rstrip("\n").split("=", 1)
+                        conf[key.strip()] = value.strip()
+        except OSError:
+            pass
+        path = conf.get("path")
+        self.wallpaper = (path, conf.get("mode", "fill")) if path and os.path.isfile(path) else None
+        self.cache = {}
+        for widget in self.widgets:
+            widget.queue_draw()
+        return False
+
+    def draw(self, widget, cr):
+        if not self.wallpaper:
+            return False
+        path, mode = self.wallpaper
+        w, h = widget.get_allocated_width(), widget.get_allocated_height()
+        key = (path, mode, w, h)
+        if key not in self.cache:
+            try:
+                pixbuf = GdkPixbuf.Pixbuf.new_from_file(path)
+            except GLib.Error as e:
+                print(f"SkorneXDesktop: can't load wallpaper {path}: {e}", file=sys.stderr, flush=True)
+                self.wallpaper = None
+                return False
+            pixbuf = pixbuf.apply_embedded_orientation() or pixbuf
+            pw, ph = pixbuf.get_width(), pixbuf.get_height()
+            if mode == "stretch":
+                sw, sh = w, h
+            else:
+                scale = {"fit": min(w / pw, h / ph), "fill": max(w / pw, h / ph)}.get(mode, 1)
+                sw, sh = max(1, round(pw * scale)), max(1, round(ph * scale))
+            scaled = pixbuf if (sw, sh) == (pw, ph) else pixbuf.scale_simple(sw, sh, GdkPixbuf.InterpType.BILINEAR)
+            self.cache[key] = (scaled, (w - sw) // 2, (h - sh) // 2)
+        scaled, x, y = self.cache[key]
+        Gdk.cairo_set_source_pixbuf(cr, scaled, x, y)
+        cr.paint()
+        return False
+
+
+class Backdrop(Gtk.Window):
+    """The background color and wallpaper on the other monitors (the desktop
+    icons live on the main one)."""
+
+    def __init__(self, app, monitor, wallpaper):
+        super().__init__(application=app)
+        make_layer(self, GtkLayerShell.Layer.BOTTOM,
+                   [GtkLayerShell.Edge.TOP, GtkLayerShell.Edge.BOTTOM,
+                    GtkLayerShell.Edge.LEFT, GtkLayerShell.Edge.RIGHT],
+                   namespace="skornex-desktop", monitor=monitor)
+        GtkLayerShell.set_exclusive_zone(self, -1)  # the whole screen
+        self.get_style_context().add_class("desktop")
+        area = Gtk.DrawingArea()
+        wallpaper.attach(area)
+        self.add(area)
+        self.show_all()
+
+
 class Desktop(Gtk.Window):
     """Desktop icons, under all windows: the Recycle Bin plus everything in
     ~/Desktop (files, folders, app shortcuts), like Windows. Drag icons
@@ -1313,11 +1430,13 @@ class Desktop(Gtk.Window):
         self.fixed = Gtk.Fixed()
         background.add(self.fixed)
         self.add(background)
-        # The wallpaper is painted under the icons, and follows its file live.
-        self.fixed.connect("draw", self.draw_wallpaper)
-        self.wall_monitor = Gio.File.new_for_path(WALLPAPER_FILE).monitor_file(Gio.FileMonitorFlags.NONE, None)
-        self.wall_monitor.connect("changed", lambda *_: GLib.idle_add(self.load_wallpaper))
-        self.load_wallpaper()
+        # The wallpaper is painted under the icons; other monitors get a backdrop.
+        self.wallpaper = Wallpaper()
+        self.wallpaper.attach(self.fixed)
+        display = Gdk.Display.get_default()
+        self.backdrops = [Backdrop(app, m, self.wallpaper)
+                          for m in (display.get_monitor(i) for i in range(display.get_n_monitors()))
+                          if m != main_monitor()]
 
         self.icons = {}
         self.selected = None
@@ -1336,51 +1455,6 @@ class Desktop(Gtk.Window):
         GLib.timeout_add_seconds(3, self.update_trash)
         self.show_all()
         print("SkorneXDesktop started", file=sys.stderr, flush=True)
-
-    # --- Wallpaper ---
-
-    def load_wallpaper(self):
-        conf = {}
-        try:
-            with open(WALLPAPER_FILE) as f:
-                for line in f:
-                    if "=" in line and not line.startswith("#"):
-                        key, value = line.rstrip("\n").split("=", 1)
-                        conf[key.strip()] = value.strip()
-        except OSError:
-            pass
-        path = conf.get("path")
-        self.wallpaper = (path, conf.get("mode", "fill")) if path and os.path.isfile(path) else None
-        self.wallpaper_cache = None
-        self.queue_draw()
-        return False
-
-    def draw_wallpaper(self, widget, cr):
-        if not self.wallpaper:
-            return False
-        path, mode = self.wallpaper
-        w, h = widget.get_allocated_width(), widget.get_allocated_height()
-        key = (path, mode, w, h)
-        if not self.wallpaper_cache or self.wallpaper_cache[0] != key:
-            try:
-                pixbuf = GdkPixbuf.Pixbuf.new_from_file(path)
-            except GLib.Error as e:
-                print(f"SkorneXDesktop: can't load wallpaper {path}: {e}", file=sys.stderr, flush=True)
-                self.wallpaper = None
-                return False
-            pixbuf = pixbuf.apply_embedded_orientation() or pixbuf
-            pw, ph = pixbuf.get_width(), pixbuf.get_height()
-            if mode == "stretch":
-                sw, sh = w, h
-            else:
-                scale = {"fit": min(w / pw, h / ph), "fill": max(w / pw, h / ph)}.get(mode, 1)
-                sw, sh = max(1, round(pw * scale)), max(1, round(ph * scale))
-            scaled = pixbuf if (sw, sh) == (pw, ph) else pixbuf.scale_simple(sw, sh, GdkPixbuf.InterpType.BILINEAR)
-            self.wallpaper_cache = (key, scaled, (w - sw) // 2, (h - sh) // 2)
-        _key, scaled, x, y = self.wallpaper_cache
-        Gdk.cairo_set_source_pixbuf(cr, scaled, x, y)
-        cr.paint()
-        return False
 
     # --- Saved positions: {"name": [column, row]} ---
 
@@ -1560,6 +1634,11 @@ class SkorneXBar(Gtk.Application):
             print(f"skornex-bar: no style ({e.message}); run skornex-theme", file=sys.stderr)
         Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), css,
                                                  Gtk.STYLE_PROVIDER_PRIORITY_USER)
+        # A monitor plugged in or out: start over (autostart restarts us a
+        # second later), so the taskbar and desktop land on the right screens.
+        display = Gdk.Display.get_default()
+        display.connect("monitor-added", lambda *_: GLib.timeout_add(500, self.quit))
+        display.connect("monitor-removed", lambda *_: GLib.timeout_add(500, self.quit))
         self.hold()
 
     def do_command_line(self, command_line):

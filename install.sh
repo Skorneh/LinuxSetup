@@ -136,6 +136,9 @@ fi
 # login (agreety) instead.
 info "Setting up login..."
 sudo install -Dm755 "$REPO_DIR/system/skornex-session" /usr/local/bin/skornex-session
+# Apps like Files open files through skornex-open (Notepad uses it to come to
+# the front). A copy here works even where ~/.local/bin isn't on PATH.
+sudo install -Dm755 "$REPO_DIR/dotfiles/bin/.local/bin/skornex-open" /usr/local/bin/skornex-open
 sudo tee /etc/greetd/config.toml >/dev/null <<EOF
 [terminal]
 vt = 1

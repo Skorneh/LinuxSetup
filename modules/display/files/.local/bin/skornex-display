@@ -18,7 +18,8 @@ import sys
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import GLib, Gtk  # noqa: E402
+gi.require_version("Gdk", "3.0")
+from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
 TITLE = "Display"
 ICON = "preferences-desktop-display"
@@ -53,9 +54,145 @@ def state_of(output):
 
 
 def logical_size(state):
+    """Size on the desktop, in whole pixels, rounded down like labwc does, so
+    monitors placed side by side touch with no gap."""
     w, h, _ = state["mode"]
-    w, h = w / state["scale"], h / state["scale"]
+    w, h = int(w / state["scale"]), int(h / state["scale"])
     return (h, w) if state["transform"] in ("90", "270") else (w, h)
+
+
+def overlaps(a, b):
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
+    return ax < bx + bw and bx < ax + aw and ay < by + bh and by < ay + ah
+
+
+def snap(rect, others):
+    """Moves a monitor to the nearest spot touching another one edge to edge
+    (no gap, no overlap), lining it up with that monitor's top, bottom or
+    middle when it's close."""
+    x, y, w, h = rect
+    if not others:
+        return 0, 0
+    best, best_dist = None, None
+    for ox, oy, ow, oh in others:
+        for side in ("left", "right", "above", "below"):
+            if side in ("left", "right"):
+                nx = ox - w if side == "left" else ox + ow
+                # Keep at least a stretch of shared edge so the mouse can cross.
+                share = min(h, oh) // 4
+                ny = max(oy - h + share, min(y, oy + oh - share))
+                for line_up in (oy, oy + oh - h, oy + (oh - h) // 2):
+                    if abs(ny - line_up) <= h // 10:
+                        ny = line_up
+                        break
+            else:
+                ny = oy - h if side == "above" else oy + oh
+                share = min(w, ow) // 4
+                nx = max(ox - w + share, min(x, ox + ow - share))
+                for line_up in (ox, ox + ow - w, ox + (ow - w) // 2):
+                    if abs(nx - line_up) <= w // 10:
+                        nx = line_up
+                        break
+            if any(overlaps((nx, ny, w, h), o) for o in others):
+                continue
+            dist = (nx - x) ** 2 + (ny - y) ** 2
+            if best_dist is None or dist < best_dist:
+                best, best_dist = (nx, ny), dist
+    return best or (x, y)
+
+
+MAIN_FILE = os.path.expanduser("~/.config/skornex/main-display")
+
+
+def read_main():
+    try:
+        with open(MAIN_FILE) as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+class Arrangement(Gtk.DrawingArea):
+    """The monitors as boxes: drag one next to another, it snaps edge to edge."""
+
+    def __init__(self, page):
+        super().__init__()
+        self.page = page
+        self.set_size_request(-1, 220)
+        self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK
+                        | Gdk.EventMask.POINTER_MOTION_MASK)
+        self.connect("draw", self.on_draw)
+        self.connect("button-press-event", self.on_press)
+        self.connect("motion-notify-event", self.on_motion)
+        self.connect("button-release-event", self.on_release)
+        self.drag = None
+        self.view = (1.0, 0, 0)  # scale, offset x, offset y
+
+    def rects(self):
+        return {name: (*s["pos"], *logical_size(s)) for name, s in self.page.states.items()
+                if s["enabled"] and s["mode"]}
+
+    def on_draw(self, _w, cr):
+        rects = self.rects()
+        if not rects:
+            return
+        width, height = self.get_allocated_width(), self.get_allocated_height()
+        if not self.drag:  # keep the view still while dragging
+            x0 = min(r[0] for r in rects.values())
+            y0 = min(r[1] for r in rects.values())
+            x1 = max(r[0] + r[2] for r in rects.values())
+            y1 = max(r[1] + r[3] for r in rects.values())
+            scale = min((width - 40) / max(1, x1 - x0), (height - 40) / max(1, y1 - y0))
+            self.view = (scale, (width - (x1 - x0) * scale) / 2 - x0 * scale,
+                         (height - (y1 - y0) * scale) / 2 - y0 * scale)
+        scale, ox, oy = self.view
+        fg = self.get_style_context().get_color(Gtk.StateFlags.NORMAL)
+        for i, (name, (x, y, w, h)) in enumerate(rects.items(), 1):
+            rx, ry, rw, rh = ox + x * scale, oy + y * scale, w * scale, h * scale
+            dragging = self.drag and self.drag[0] == name
+            cr.set_source_rgba(0.35, 0.55, 0.95, 0.55 if dragging else 0.35)
+            cr.rectangle(rx + 1, ry + 1, rw - 2, rh - 2)
+            cr.fill_preserve()
+            cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.8)
+            cr.set_line_width(1.5)
+            cr.stroke()
+            text = f"{i}  {name}" + ("  ★ main" if name == self.page.main else "")
+            cr.set_font_size(13)
+            ext = cr.text_extents(text)
+            cr.move_to(rx + (rw - ext.width) / 2, ry + rh / 2 + ext.height / 2)
+            cr.show_text(text)
+
+    def at(self, ex, ey):
+        scale, ox, oy = self.view
+        for name, (x, y, w, h) in self.rects().items():
+            if ox + x * scale <= ex <= ox + (x + w) * scale and oy + y * scale <= ey <= oy + (y + h) * scale:
+                return name
+        return None
+
+    def on_press(self, _w, event):
+        name = self.at(event.x, event.y)
+        if name and len(self.rects()) > 1:
+            x, y = self.page.states[name]["pos"]
+            self.drag = (name, event.x, event.y, x, y)
+
+    def on_motion(self, _w, event):
+        if not self.drag:
+            return
+        name, sx, sy, x, y = self.drag
+        scale = self.view[0]
+        self.page.states[name]["pos"] = (int(x + (event.x - sx) / scale), int(y + (event.y - sy) / scale))
+        self.queue_draw()
+
+    def on_release(self, _w, _event):
+        if not self.drag:
+            return
+        name = self.drag[0]
+        self.drag = None
+        rects = self.rects()
+        others = [r for n, r in rects.items() if n != name]
+        self.page.states[name]["pos"] = snap(rects[name], others)
+        self.queue_draw()
 
 
 def command(states):
@@ -85,6 +222,9 @@ class Page(Gtk.Box):
         title = Gtk.Label(xalign=0)
         title.set_markup(f"<span size='x-large' weight='bold'>{TITLE}</span>")
         self.pack_start(title, False, False, 0)
+        self.arrangement = Arrangement(self)
+        self.arrangement.set_no_show_all(True)  # only with two or more displays
+        self.pack_start(self.arrangement, False, False, 0)
         self.cards = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
         self.pack_start(self.cards, False, False, 0)
         buttons = Gtk.Box(spacing=8)
@@ -103,7 +243,10 @@ class Page(Gtk.Box):
             child.destroy()
         self.outputs = {o["name"]: o for o in read_outputs()}
         self.states = {name: state_of(o) for name, o in self.outputs.items()}
-        self.placement = {}  # name -> (where, other) chosen in "Position"
+        self.main = read_main()
+        if self.main not in self.outputs:
+            self.main = next(iter(self.outputs), "")
+        self.main_group = None
         if not self.outputs:
             note = Gtk.Label(label="No displays found. This needs a Wayland session (labwc) and wlr-randr.",
                              xalign=0, wrap=True)
@@ -111,6 +254,11 @@ class Page(Gtk.Box):
         for name in self.outputs:
             self.cards.pack_start(self.card(name), False, False, 0)
         self.show_all()
+        if len(self.outputs) > 1:
+            self.arrangement.show()
+            self.arrangement.queue_draw()
+        else:
+            self.arrangement.hide()
 
     def card(self, name):
         output, state = self.outputs[name], self.states[name]
@@ -133,8 +281,15 @@ class Page(Gtk.Box):
 
         if len(self.outputs) > 1:
             switch = Gtk.Switch(active=state["enabled"], halign=Gtk.Align.START)
-            switch.connect("notify::active", lambda s, _p: state.update(enabled=s.get_active()))
+            switch.connect("notify::active", lambda s, _p: (state.update(enabled=s.get_active()),
+                                                            self.arrangement.queue_draw()))
             add("Use this display", switch)
+            main = Gtk.RadioButton.new_with_label_from_widget(self.main_group, "Taskbar and desktop icons go here")
+            self.main_group = self.main_group or main
+            main.set_active(name == self.main)
+            main.connect("toggled", lambda b: b.get_active() and (setattr(self, "main", name),
+                                                                  self.arrangement.queue_draw()))
+            add("Main display", main)
 
         modes = output.get("modes", [])
         sizes = sorted({(m["width"], m["height"]) for m in modes}, key=lambda s: -s[0] * s[1])
@@ -160,6 +315,7 @@ class Page(Gtk.Box):
                 w, h = map(int, combo.get_active_id().split("x"))
                 state["mode"] = (w, h, state["mode"][2])
                 fill_rates()
+                self.arrangement.queue_draw()
 
         def on_rate(combo):
             if combo.get_active_id() and state["mode"]:
@@ -178,7 +334,8 @@ class Page(Gtk.Box):
         for s in scales:
             scale.append(repr(s), f"{round(s * 100)}%" + ("  (recommended)" if s == 1.0 else ""))
         scale.set_active_id(repr(state["scale"]))
-        scale.connect("changed", lambda c: state.update(scale=float(c.get_active_id())))
+        scale.connect("changed", lambda c: (state.update(scale=float(c.get_active_id())),
+                                            self.arrangement.queue_draw()))
         add("Scale (text and app size)", scale)
 
         orient = Gtk.ComboBoxText()
@@ -187,45 +344,29 @@ class Page(Gtk.Box):
         if not orient.set_active_id(state["transform"]):
             orient.append(state["transform"], state["transform"])
             orient.set_active_id(state["transform"])
-        orient.connect("changed", lambda c: state.update(transform=c.get_active_id()))
+        orient.connect("changed", lambda c: (state.update(transform=c.get_active_id()),
+                                             self.arrangement.queue_draw()))
         add("Orientation", orient)
 
-        if len(self.outputs) > 1:
-            place = Gtk.ComboBoxText()
-            place.append("", "Where it is now")
-            for other in self.outputs:
-                if other != name:
-                    for where, text in (("right", "Right of"), ("left", "Left of"),
-                                        ("above", "Above"), ("below", "Below")):
-                        place.append(f"{where}:{other}", f"{text} {other}")
-            place.set_active_id("")
-
-            def on_place(combo):
-                if combo.get_active_id():
-                    self.placement[name] = tuple(combo.get_active_id().split(":", 1))
-                else:
-                    self.placement.pop(name, None)
-            place.connect("changed", on_place)
-            add("Position", place)
         return frame
 
     def place(self, states):
-        for name, (where, other) in self.placement.items():
-            me, them = states[name], states.get(other)
-            if not them or not me["mode"] or not them["mode"]:
-                continue
-            ow, oh = logical_size(them)
-            mw, mh = logical_size(me)
-            ox, oy = them["pos"]
-            me["pos"] = {"right": (ox + ow, oy), "left": (ox - mw, oy),
-                         "above": (ox, oy - mh), "below": (ox, oy + oh)}[where]
-        # Keep everything at positive coordinates, with the top-left at 0,0.
-        on = [s for s in states.values() if s["enabled"]]
+        """Re-snaps every monitor against the ones before it (sizes may have
+        changed), then moves the layout so its top-left corner is at 0,0."""
+        on = sorted((n for n, st in states.items() if st["enabled"] and st["mode"]),
+                    key=lambda n: (n != self.main, states[n]["pos"]))
+        placed = []
+        for name in on:
+            rect = (*states[name]["pos"], *logical_size(states[name]))
+            if placed:
+                states[name]["pos"] = snap(rect, placed)
+                rect = (*states[name]["pos"], rect[2], rect[3])
+            placed.append(rect)
         if on:
-            min_x = min(s["pos"][0] for s in on)
-            min_y = min(s["pos"][1] for s in on)
-            for s in on:
-                s["pos"] = (s["pos"][0] - min_x, s["pos"][1] - min_y)
+            min_x = min(states[n]["pos"][0] for n in on)
+            min_y = min(states[n]["pos"][1] for n in on)
+            for n in on:
+                states[n]["pos"] = (states[n]["pos"][0] - min_x, states[n]["pos"][1] - min_y)
 
     def apply(self):
         if not self.states:
@@ -242,6 +383,11 @@ class Page(Gtk.Box):
             return
         if self.confirm_keep():
             self.save(after)
+            if self.main and self.main != read_main():
+                with open(MAIN_FILE, "w") as f:
+                    f.write(self.main + "\n")
+                # The taskbar and desktop restart on the main display a second later.
+                subprocess.run(["pkill", "-f", r"\.local/bin/skornex-bar( desktop)?$"])
         else:
             subprocess.run(command(before))
         self.load()
