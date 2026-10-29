@@ -1,26 +1,86 @@
 #!/usr/bin/env python3
 """SkorneX Sound settings: output and input devices, their volume, and the
 volume of each app that's playing sound, like Windows' Sound settings and
-Volume mixer.
+Volume mixer. For the microphone: a boost above 100%, a cap on how loud you
+can get (so shouting doesn't blast people in Discord), a live level meter,
+and a record-and-play-back test.
 
     skornex-sound     open it on its own (or search "Sound settings")
 
 It's also a page in Settings (skornex-settings). Everything changes right
-away; PipeWire remembers it.
+away; PipeWire remembers it. The cap is a limiter (swh-plugins) that sits
+between your real microphone and apps: ~/.config/pipewire/pipewire.conf.d/
+90-skornex-mic-cap.conf adds "Microphone (volume capped)", which becomes the
+default microphone while the cap is on.
 """
 
+import array
 import json
+import math
+import os
 import subprocess
 import sys
+import tempfile
 
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import GLib, Gtk  # noqa: E402
+from gi.repository import Gio, GLib, Gtk  # noqa: E402
 
 TITLE = "Sound"
 ICON = "preferences-desktop-sound"
 APP_ID = "dev.skornex.Sound"
+
+STATE = os.path.expanduser("~/.config/skornex/sound.json")
+CAP_NODE = "skornex_mic_capped"
+CAP_CONF = os.path.expanduser("~/.config/pipewire/pipewire.conf.d/90-skornex-mic-cap.conf")
+CAP_TEMPLATE = """# Made by Sound settings (skornex-sound): caps how loud the microphone can get.
+# Delete this file and restart PipeWire to remove it.
+context.modules = [
+  {{ name = libpipewire-module-filter-chain
+    args = {{
+      node.description = "Microphone (volume capped)"
+      media.name = "Microphone (volume capped)"
+      filter.graph = {{
+        nodes = [
+          {{ type = ladspa
+            name = limiter
+            plugin = fast_lookahead_limiter_1913
+            label = fastLookaheadLimiter
+            control = {{ "Input gain (dB)" = 0 "Limit (dB)" = {limit:.1f} "Release time (s)" = 0.1 }}
+          }}
+        ]
+      }}
+      audio.channels = 2
+      audio.position = [ FL FR ]
+      capture.props = {{
+        node.name = "capture.{node}"
+        node.passive = true
+        target.object = "{mic}"
+      }}
+      playback.props = {{
+        node.name = "{node}"
+        media.class = Audio/Source
+      }}
+    }}
+  }}
+]
+"""
+TEST_SECONDS = 5
+
+
+def load_state():
+    try:
+        with open(STATE) as f:
+            return {"cap": False, "limit": -6.0, "mic": "", **json.load(f)}
+    except (OSError, ValueError):
+        return {"cap": False, "limit": -6.0, "mic": ""}
+
+
+def save_state(state):
+    os.makedirs(os.path.dirname(STATE), exist_ok=True)
+    with open(STATE, "w") as f:
+        json.dump(state, f, indent=1)
 
 
 def pactl(*args):
@@ -58,60 +118,119 @@ class Page(Gtk.Box):
     def __init__(self):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         self.set_border_width(24)
+        self.state = load_state()
+        self.loading = False
+        self.dragging = False
         title = Gtk.Label(xalign=0)
         title.set_markup(f"<span size='x-large' weight='bold'>{TITLE}</span>")
         self.pack_start(title, False, False, 0)
 
         self.pack_start(heading("Output (speakers, headphones)"), False, False, 0)
-        self.out_combo, self.out_volume, self.out_mute = self.device_row("sink")
-        self.pack_start(heading("Input (microphone)"), False, False, 0)
-        self.in_combo, self.in_volume, self.in_mute = self.device_row("source")
+        self.out_combo = Gtk.ComboBoxText()
+        self.out_combo.connect("changed", lambda c: not self.loading and c.get_active_id()
+                               and (pactl("set-default-sink", c.get_active_id()), self.load()))
+        self.pack_start(self.out_combo, False, False, 0)
+        self.out_volume, self.out_mute = self.volume_row(
+            "sink", lambda: "@DEFAULT_SINK@", 100)
+
+        self.pack_start(heading("Microphone"), False, False, 0)
+        self.in_combo = Gtk.ComboBoxText()
+        self.in_combo.connect("changed", lambda c: not self.loading and c.get_active_id()
+                              and self.choose_mic(c.get_active_id()))
+        self.pack_start(self.in_combo, False, False, 0)
+        gain_note = Gtk.Label(label="Volume (gain). Above 100% boosts a quiet microphone.", xalign=0)
+        gain_note.get_style_context().add_class("dim-label")
+        self.pack_start(gain_note, False, False, 0)
+        self.in_volume, self.in_mute = self.volume_row("source", self.mic, 150)
+        self.in_volume.add_mark(100, Gtk.PositionType.BOTTOM, "100%")
+
+        cap_row = Gtk.Box(spacing=12)
+        cap_row.pack_start(Gtk.Label(label="Cap how loud you can get", xalign=0), False, False, 0)
+        self.cap_switch = Gtk.Switch(active=self.state["cap"], valign=Gtk.Align.CENTER)
+        cap_row.pack_start(self.cap_switch, False, False, 0)
+        self.pack_start(cap_row, False, False, 0)
+        level_row = Gtk.Box(spacing=6)
+        level_row.pack_start(Gtk.Label(label="Lower cap"), False, False, 0)
+        self.cap_level = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, -20, -1, 1)
+        self.cap_level.set_value(self.state["limit"])
+        self.cap_level.set_draw_value(False)
+        self.cap_level.set_hexpand(True)
+        level_row.pack_start(self.cap_level, True, True, 0)
+        level_row.pack_start(Gtk.Label(label="Higher cap"), False, False, 0)
+        self.cap_apply = Gtk.Button(label="Apply cap")
+        self.cap_apply.connect("clicked", lambda _b: self.apply_cap())
+        level_row.pack_start(self.cap_apply, False, False, 0)
+        self.pack_start(level_row, False, False, 0)
+        self.cap_note = Gtk.Label(xalign=0, wrap=True, label=(
+            "Loud sounds (shouting, laughing) are turned down to the cap; normal talking isn't "
+            "changed. Applying it stops all sound for a second."))
+        self.cap_note.get_style_context().add_class("dim-label")
+        self.pack_start(self.cap_note, False, False, 0)
+        self.cap_switch.connect("notify::active", lambda *_: self.apply_cap())
+
+        test_row = Gtk.Box(spacing=10)
+        test_row.pack_start(Gtk.Label(label="Test"), False, False, 0)
+        self.meter = Gtk.LevelBar(min_value=0, max_value=1)
+        self.meter.set_hexpand(True)
+        self.meter.set_valign(Gtk.Align.CENTER)
+        test_row.pack_start(self.meter, True, True, 0)
+        self.record_button = Gtk.Button(label=f"Record {TEST_SECONDS} seconds and play back")
+        self.record_button.connect("clicked", lambda _b: self.record_test())
+        test_row.pack_start(self.record_button, False, False, 0)
+        self.pack_start(test_row, False, False, 0)
+        meter_note = Gtk.Label(label="Talk: the bar shows what apps hear, after the cap.", xalign=0)
+        meter_note.get_style_context().add_class("dim-label")
+        self.pack_start(meter_note, False, False, 0)
+
         self.pack_start(heading("Apps"), False, False, 0)
         self.apps = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self.pack_start(self.apps, False, False, 0)
 
-        self.loading = False
-        self.dragging = False
+        self.meter_proc = None
+        self.level = 0.0
         self.load()
         # Apps start and stop playing; keep the list fresh while it's open.
         self.timer = GLib.timeout_add_seconds(2, self.refresh_apps)
-        self.connect("destroy", lambda *_: GLib.source_remove(self.timer))
+        self.connect("map", lambda *_: self.start_meter())
+        self.connect("unmap", lambda *_: self.stop_meter())
+        self.connect("destroy", lambda *_: (GLib.source_remove(self.timer), self.stop_meter()))
 
-    def device_row(self, kind):
-        combo = Gtk.ComboBoxText()
-        combo.connect("changed", lambda c: not self.loading and c.get_active_id()
-                      and (pactl(f"set-default-{kind}", c.get_active_id()), self.load()))
-        self.pack_start(combo, False, False, 0)
+    def volume_row(self, kind, target, top):
         row = Gtk.Box(spacing=8)
         mute = Gtk.ToggleButton()
         mute.set_tooltip_text("Mute")
-        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
+        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, top, 1)
         scale.set_hexpand(True)
         scale.set_value_pos(Gtk.PositionType.RIGHT)
         scale.connect("value-changed", lambda s: not self.loading and pactl(
-            f"set-{kind}-volume", f"@DEFAULT_{kind.upper()}@", f"{int(s.get_value())}%"))
+            f"set-{kind}-volume", target(), f"{int(s.get_value())}%"))
         mute.connect("toggled", lambda b: (self.set_mute_icon(b), not self.loading and pactl(
-            f"set-{kind}-mute", f"@DEFAULT_{kind.upper()}@", "1" if b.get_active() else "0")))
+            f"set-{kind}-mute", target(), "1" if b.get_active() else "0")))
         row.pack_start(mute, False, False, 0)
         row.pack_start(scale, True, True, 0)
         self.pack_start(row, False, False, 0)
-        return combo, scale, mute
+        return scale, mute
 
     @staticmethod
     def set_mute_icon(button):
         name = "audio-volume-muted-symbolic" if button.get_active() else "audio-volume-high-symbolic"
         button.set_image(Gtk.Image.new_from_icon_name(name, Gtk.IconSize.BUTTON))
 
-    def fill_device(self, kind, combo, scale, mute):
-        devices = pactl_json("list", f"{kind}s")
-        if kind == "source":  # the "monitor" sources just echo the speakers
-            devices = [d for d in devices if not d["name"].endswith(".monitor")]
-        default = pactl(f"get-default-{kind}").strip()
+    # --- Devices ---
+
+    def mic(self):
+        """The real microphone (while capped, apps use the capped copy of it)."""
+        default = pactl("get-default-source").strip()
+        if default == CAP_NODE and self.state["mic"]:
+            return self.state["mic"]
+        return default
+
+    def fill(self, combo, scale, mute, devices, current_name):
         combo.remove_all()
         for d in devices:
             combo.append(d["name"], d.get("description") or d["name"])
-        combo.set_active_id(default)
-        current = next((d for d in devices if d["name"] == default), None)
+        combo.set_active_id(current_name)
+        current = next((d for d in devices if d["name"] == current_name), None)
         scale.set_sensitive(current is not None)
         mute.set_sensitive(current is not None)
         if current:
@@ -121,11 +240,123 @@ class Page(Gtk.Box):
 
     def load(self):
         self.loading = True
-        self.fill_device("sink", self.out_combo, self.out_volume, self.out_mute)
-        self.fill_device("source", self.in_combo, self.in_volume, self.in_mute)
+        sinks = pactl_json("list", "sinks")
+        self.fill(self.out_combo, self.out_volume, self.out_mute, sinks, pactl("get-default-sink").strip())
+        # Real microphones only: not the speakers' "monitor" echo, not the capped copy.
+        mics = [d for d in pactl_json("list", "sources")
+                if not d["name"].endswith(".monitor") and d["name"] != CAP_NODE]
+        self.fill(self.in_combo, self.in_volume, self.in_mute, mics, self.mic())
         self.loading = False
         self.app_ids = None
         self.refresh_apps()
+
+    def choose_mic(self, name):
+        self.state["mic"] = name
+        save_state(self.state)
+        if self.state["cap"]:
+            self.apply_cap()  # point the cap at the new microphone
+        else:
+            pactl("set-default-source", name)
+            self.load()
+            self.start_meter()
+
+    # --- The cap (a limiter in PipeWire) ---
+
+    def apply_cap(self):
+        self.state["cap"] = self.cap_switch.get_active()
+        self.state["limit"] = self.cap_level.get_value()
+        if self.state["cap"]:
+            self.state["mic"] = self.mic()
+        save_state(self.state)
+        if self.state["cap"]:
+            if not os.path.exists("/usr/lib/ladspa/fast_lookahead_limiter_1913.so"):
+                self.cap_note.set_text("The cap needs swh-plugins. Run: sudo pacman -S swh-plugins")
+                return
+            os.makedirs(os.path.dirname(CAP_CONF), exist_ok=True)
+            with open(CAP_CONF, "w") as f:
+                f.write(CAP_TEMPLATE.format(limit=self.state["limit"], node=CAP_NODE, mic=self.state["mic"]))
+        else:
+            try:
+                os.remove(CAP_CONF)
+            except FileNotFoundError:
+                pass
+        self.stop_meter()
+        self.set_sensitive(False)
+        self.cap_note.set_text("Applying…")
+        subprocess.run(["systemctl", "--user", "restart", "pipewire", "pipewire-pulse", "wireplumber"])
+        GLib.timeout_add_seconds(3, self.after_restart)
+
+    def after_restart(self):
+        pactl("set-default-source", CAP_NODE if self.state["cap"] else self.state["mic"])
+        self.set_sensitive(True)
+        self.cap_note.set_text("Done. Loud sounds are now capped." if self.state["cap"]
+                               else "The cap is off.")
+        self.load()
+        self.start_meter()
+        return False
+
+    # --- Testing: a live level meter, and record + play back ---
+
+    def start_meter(self):
+        self.stop_meter()
+        self.cancel = Gio.Cancellable()
+        try:
+            self.meter_proc = Gio.Subprocess.new(
+                ["parec", "--raw", "--format=s16le", "--channels=1", "--rate=16000",
+                 "--latency-msec=50", "-d", "@DEFAULT_SOURCE@"],
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE)
+        except GLib.Error:
+            self.meter_proc = None
+            return
+        self.read_meter(self.meter_proc.get_stdout_pipe())
+
+    def read_meter(self, stream):
+        stream.read_bytes_async(1600, GLib.PRIORITY_DEFAULT, self.cancel, self.on_meter)
+
+    def on_meter(self, stream, result):
+        try:
+            data = stream.read_bytes_finish(result).get_data()
+        except GLib.Error:
+            return
+        if not data:
+            return
+        samples = array.array("h")
+        samples.frombytes(data[:len(data) // 2 * 2])
+        peak = max((abs(x) for x in samples), default=0) / 32768
+        level = max(0.0, min(1.0, (20 * math.log10(peak) + 60) / 60)) if peak > 0 else 0.0
+        self.level = max(level, self.level - 0.06)  # rises fast, falls slowly
+        self.meter.set_value(self.level)
+        self.read_meter(stream)
+
+    def stop_meter(self):
+        if self.meter_proc:
+            self.cancel.cancel()
+            self.meter_proc.force_exit()
+            self.meter_proc = None
+        self.meter.set_value(0)
+
+    def record_test(self):
+        path = os.path.join(tempfile.gettempdir(), f"skornex-mic-test-{os.getpid()}.wav")
+        script = (f'parecord --file-format=wav -d @DEFAULT_SOURCE@ "$1" & p=$!; sleep {TEST_SECONDS}; '
+                  'kill $p; wait $p; paplay "$1"; rm -f "$1"')
+        try:
+            proc = Gio.Subprocess.new(["sh", "-c", script, "sh", path], Gio.SubprocessFlags.NONE)
+        except GLib.Error:
+            return
+        self.record_button.set_sensitive(False)
+        left = [TEST_SECONDS]
+
+        def tick():
+            if left[0] > 0:
+                self.record_button.set_label(f"Recording… talk now ({left[0]})")
+                left[0] -= 1
+                return True
+            self.record_button.set_label("Playing it back…")
+            return False
+        tick()
+        GLib.timeout_add_seconds(1, tick)
+        proc.wait_async(None, lambda *_: (self.record_button.set_label(
+            f"Record {TEST_SECONDS} seconds and play back"), self.record_button.set_sensitive(True)))
 
     def refresh_apps(self):
         if self.dragging:

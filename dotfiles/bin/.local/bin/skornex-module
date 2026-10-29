@@ -14,7 +14,7 @@
 # A module is a folder in the repo's modules/ directory. Everything in its
 # files/ folder is linked into your home folder, including its description
 # in files/.local/share/skornex/settings/NAME.conf (Packages= lists what it
-# needs from the official repos).
+# needs from the official repos, Aur= what it needs from the AUR).
 set -euo pipefail
 
 self="$(readlink -f "$0")"
@@ -43,7 +43,7 @@ names_from_args() {
 }
 
 add() {
-    local name packages=()
+    local name packages=() aur=()
     for name in $(names_from_args "$@"); do
         if ! exists "$name"; then
             echo "skornex-module: there's no module called '$name'. Run skornex-module to see them." >&2
@@ -51,9 +51,14 @@ add() {
         fi
         read -ra pkgs <<<"$(field "$name" Packages)"
         packages+=("${pkgs[@]}")
+        read -ra pkgs <<<"$(field "$name" Aur)"
+        aur+=("${pkgs[@]}")
     done
     if ((${#packages[@]})); then
         sudo pacman -S --needed --noconfirm "${packages[@]}"
+    fi
+    if ((${#aur[@]})); then
+        paru -S --needed --noconfirm "${aur[@]}"
     fi
     for name in $(names_from_args "$@"); do
         exists "$name" || continue

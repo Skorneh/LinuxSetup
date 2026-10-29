@@ -18,13 +18,11 @@ import sys
 import gi
 
 gi.require_version("Gtk", "3.0")
-gi.require_version("Gdk", "3.0")
-from gi.repository import Gdk, GLib, Gtk  # noqa: E402
+from gi.repository import GLib, Gtk  # noqa: E402
 
 TITLE = "Mouse"
 ICON = "input-mouse"
 APP_ID = "dev.skornex.Mouse"
-DOUBLE_CLICK = getattr(Gdk.EventType, "DOUBLE_BUTTON_PRESS", None) or getattr(Gdk.EventType, "_2BUTTON_PRESS")
 
 STATE = os.path.expanduser("~/.config/skornex/mouse.json")
 CHANGES = os.path.expanduser("~/.config/skornex/labwc")
@@ -111,17 +109,9 @@ class Page(Gtk.Box):
         self.switch("Natural scrolling", "touch_natural")
         self.switch("Turn off while typing", "dwt")
 
-        test = Gtk.Label(xalign=0)
-        test.set_markup("<span alpha='60%'>Changes apply right away. Double-click here to test: </span>")
-        box = Gtk.EventBox()
-        target = Gtk.Label(label="📁 Double-click me")
-        box.add(target)
-        box.connect("button-press-event", lambda _w, e: e.type == DOUBLE_CLICK and target.set_text(
-            "✔ Opened!" if target.get_text() != "✔ Opened!" else "📁 Double-click me"))
-        line = Gtk.Box(spacing=8)
-        line.pack_start(test, False, False, 0)
-        line.pack_start(box, False, False, 0)
-        self.pack_start(line, False, False, 8)
+        note = Gtk.Label(label="Changes apply as soon as you make them.", xalign=0)
+        note.get_style_context().add_class("dim-label")
+        self.pack_start(note, False, False, 8)
         reset = Gtk.Button(label="Reset to defaults")
         reset.set_halign(Gtk.Align.START)
         reset.connect("clicked", lambda _b: self.reset())

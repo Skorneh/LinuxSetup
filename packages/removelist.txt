@@ -16,6 +16,5 @@ man-db
 rust
 # Clipboard history (Win+V) is off for now; it may come back later.
 cliphist
-wtype
 drawing
 libdbusmenu-gtk3

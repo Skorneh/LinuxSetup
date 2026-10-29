@@ -7,7 +7,7 @@
   labwc reads rc.xml, which skornex-labwc builds from this file plus the
   changes Settings modules save in ~/.config/skornex/labwc/ (mouse.xml,
   keyboard.xml, shortcuts.xml). Edit this file or those, never rc.xml, then
-  run `skornex-labwc` to rebuild and reload.
+  run `skornex-labwc` in a terminal to rebuild and reload.
 -->
 <labwc_config>
 
@@ -98,12 +98,6 @@
     <keybind key="Print">
       <action name="Execute" command="~/.local/bin/skornex-screenshot region" />
     </keybind>
-    <keybind key="W-S-s">
-      <action name="Execute" command="~/.local/bin/skornex-screenshot region" />
-    </keybind>
-    <keybind key="A-Print">
-      <action name="Execute" command="~/.local/bin/skornex-screenshot region" />
-    </keybind>
     <keybind key="S-Print">
       <action name="Execute" command="~/.local/bin/skornex-screenshot full" />
     </keybind>
@@ -152,10 +146,6 @@
     </keybind>
     <keybind key="W-d">
       <action name="ToggleShowDesktop" />
-    </keybind>
-    <!-- Rebuild and reload labwc's settings. -->
-    <keybind key="W-S-r">
-      <action name="Execute" command="~/.local/bin/skornex-labwc" />
     </keybind>
 
     <!-- Volume keys. -->

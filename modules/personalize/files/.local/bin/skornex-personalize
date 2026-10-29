@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SkorneX Personalize: color themes, your own accent color, and a desktop
+"""SkorneX Personalize: color themes, each color one by one, and a desktop
 wallpaper, like Windows' Personalization settings.
 
     skornex-personalize     open it on its own (or search "Personalize")
@@ -39,6 +39,18 @@ THEMES = {
     "Ember": "100c0a 1f1813 33281f a6968a e6dcd5 e8a05c e06060",
 }
 THEMES = {name: dict(zip(KEYS, values.split())) for name, values in THEMES.items()}
+# The colors you can pick one by one: the main four first, the rest under "More colors".
+COLOR_NAMES = [
+    ("BG", "Background (desktop, taskbar, lock screen)"),
+    ("SURFACE", "Menus, buttons and title bars"),
+    ("TEXT", "Text"),
+    ("ACCENT", "Accent (focused window, active app, selection)"),
+]
+MORE_COLOR_NAMES = [
+    ("BORDER", "Borders and dividers"),
+    ("MUTED", "Secondary text"),
+    ("URGENT", "Warnings and errors"),
+]
 MODES = [("fill", "Fill"), ("fit", "Fit"), ("stretch", "Stretch"), ("center", "Center")]
 
 
@@ -132,16 +144,26 @@ class Page(Gtk.Box):
             themes.add(button)
         self.pack_start(themes, False, False, 0)
 
-        accent_row = Gtk.Box(spacing=12)
-        accent_row.pack_start(Gtk.Label(label="Accent color (focused window, active app)"), False, False, 0)
-        self.accent = Gtk.ColorButton()
-        self.accent.set_rgba(Gdk.RGBA(*rgb(current_colors()["ACCENT"]), 1))
-        self.accent.connect("color-set", lambda b: self.pick_accent(to_hex(b.get_rgba())))
-        accent_row.pack_start(self.accent, False, False, 0)
+        self.buttons = {}
+        grid = Gtk.Grid(row_spacing=8, column_spacing=16)
+        more = Gtk.Grid(row_spacing=8, column_spacing=16)
+        colors = current_colors()
+        for target, names in ((grid, COLOR_NAMES), (more, MORE_COLOR_NAMES)):
+            for row, (key, text) in enumerate(names):
+                button = Gtk.ColorButton(rgba=Gdk.RGBA(*rgb(colors[key]), 1), title=text)
+                button.connect("color-set", lambda b, k=key: self.pick_color(k, to_hex(b.get_rgba())))
+                self.buttons[key] = button
+                target.attach(button, 0, row, 1, 1)
+                target.attach(Gtk.Label(label=text, xalign=0), 1, row, 1, 1)
+        self.pack_start(grid, False, False, 0)
+        expander = Gtk.Expander(label="More colors")
+        more.set_margin_top(8)
+        expander.add(more)
+        self.pack_start(expander, False, False, 0)
         default = Gtk.Button(label="Use SkorneX's colors")
+        default.set_halign(Gtk.Align.START)
         default.connect("clicked", lambda _b: self.default_colors())
-        accent_row.pack_end(default, False, False, 0)
-        self.pack_start(accent_row, False, False, 0)
+        self.pack_start(default, False, False, 0)
         note = Gtk.Label(label="The taskbar blinks once while new colors are applied.", xalign=0)
         note.get_style_context().add_class("dim-label")
         self.pack_start(note, False, False, 0)
@@ -183,13 +205,17 @@ class Page(Gtk.Box):
         label.set_margin_top(8)
         return label
 
+    def show_colors(self, colors):
+        for key, button in self.buttons.items():
+            button.set_rgba(Gdk.RGBA(*rgb(colors[key]), 1))
+
     def pick_theme(self, colors):
         apply_colors(colors)
-        self.accent.set_rgba(Gdk.RGBA(*rgb(colors["ACCENT"]), 1))
+        self.show_colors(colors)
 
-    def pick_accent(self, value):
+    def pick_color(self, key, value):
         colors = current_colors()
-        colors["ACCENT"] = value
+        colors[key] = value
         apply_colors(colors)
 
     def default_colors(self):
@@ -198,7 +224,7 @@ class Page(Gtk.Box):
         except FileNotFoundError:
             pass
         subprocess.Popen([os.path.expanduser("~/.local/bin/skornex-theme")], stdout=subprocess.DEVNULL)
-        self.accent.set_rgba(Gdk.RGBA(*rgb(current_colors()["ACCENT"]), 1))
+        self.show_colors(current_colors())
 
     def save_wallpaper(self):
         path = self.picture.get_filename()

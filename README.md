@@ -180,11 +180,11 @@ remove one without touching the others.
 | Module | Search for | What it does |
 |---|---|---|
 | `display` | Display settings | Resolution, refresh rate, scale, orientation, and where each monitor sits. Asks "Keep these display settings?" and goes back after 15 seconds if you can't see anything. |
-| `sound` | Sound settings | Speakers or headphones, microphone, their volume, and each app's volume. |
+| `sound` | Sound settings | Speakers or headphones and their volume; your microphone with a boost up to 150%, a cap on how loud you can get, a live level meter and a record-and-play-back test; each app's volume. |
 | `mouse` | Mouse settings | Pointer speed, acceleration, scroll speed and direction, swap buttons, double-click speed, pointer size, touchpad tap-to-click. |
 | `keyboard` | Keyboard settings | Keyboard layouts (languages) and the keys that switch them, key repeat, Num Lock. |
-| `shortcuts` | Keyboard shortcuts | Every shortcut in one list: change its keys, turn it off, or add your own to open an app or run a command. |
-| `personalize` | Personalize | Color themes (Graphite, Midnight, Forest, Plum, Ember), your own accent color, and a desktop wallpaper. |
+| `shortcuts` | Keyboard shortcuts | Every desktop-wide shortcut in one list: change its keys, turn it off, or add your own that opens an app, runs a command, presses other keys, or clicks the mouse (for example Alt+1 = left click). Shortcuts inside apps (Ctrl+C in Firefox) belong to each app. |
+| `personalize` | Personalize | Color themes (Graphite, Midnight, Forest, Plum, Ember), or pick each color yourself (background, menus, text, accent, and more), and a desktop wallpaper. |
 | `updates` | Updates | What's waiting to be updated (system, AUR apps, SkorneX itself), one button to install, and an optional reminder at login. |
 
 **Settings** (search "Settings") shows every module you have in one window.
@@ -212,7 +212,7 @@ already made.
 | Ctrl+Alt+Q | Force-quit the window you're in |
 | Ctrl+Shift+Esc | Task Manager |
 | Ctrl+Alt+Delete | Power menu (Lock, Restart, Shut down) |
-| Print Screen, Win+Shift+S | Drag a box, copy it to the clipboard |
+| Print Screen | Drag a box, copy it to the clipboard |
 | Shift+Print Screen | Whole screen to the clipboard |
 | Win+Print Screen | Whole screen, saved to Pictures/Screenshots |
 | Volume keys | Volume up, down, mute |
@@ -246,8 +246,8 @@ search right away.
   ([docs](https://labwc.github.io/labwc-config.5.html)) are built by
   `skornex-labwc` from SkorneX's `~/.config/labwc/rc.base.xml` plus your
   changes in `~/.config/skornex/labwc/*.xml` (a file there only needs the
-  parts it changes). Edit one of those, never `rc.xml`, then press
-  Win+Shift+R to rebuild and reload.
+  parts it changes). Edit one of those, never `rc.xml`, then
+  run `skornex-labwc` in Terminal to rebuild and reload.
 - **Startup apps:** `~/.config/labwc/autostart`.
 
 Most of your settings are links into `~/LinuxSetup/dotfiles`, so editing them
