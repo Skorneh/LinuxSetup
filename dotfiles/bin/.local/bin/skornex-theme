@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # skornex-theme: apply ~/.config/skornex/colors to everything SkorneX themes.
+# ~/.config/skornex/colors.user (from the Personalize settings module, or
+# written by hand) overrides any of its values without touching the repo.
 # Fills in the templates in the repo's theme/templates/ folder and writes the
 # results into ~/.config, then reloads whatever is running.
 set -euo pipefail
@@ -11,6 +13,10 @@ templates="$repo/theme/templates"
 set -a
 # shellcheck source=/dev/null
 . "$colors"
+if [[ -f "$colors.user" ]]; then
+    # shellcheck source=/dev/null
+    . "$colors.user"
+fi
 set +a
 vars='$BG $SURFACE $BORDER $MUTED $TEXT $ACCENT $URGENT'
 

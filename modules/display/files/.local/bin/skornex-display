@@ -1,0 +1,307 @@
+#!/usr/bin/env python3
+"""SkorneX Display settings: resolution, refresh rate, scale, orientation and
+where each monitor sits, like Windows' Display settings.
+
+    skornex-display     open it on its own (or search "Display settings")
+
+It's also a page in Settings (skornex-settings). Changes ask "Keep these
+display settings?" and go back on their own after 15 seconds if you can't
+see the screen. Kept settings are saved in ~/.config/skornex/autostart.d/display
+and applied every time you log in.
+"""
+
+import json
+import os
+import subprocess
+import sys
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import GLib, Gtk  # noqa: E402
+
+TITLE = "Display"
+ICON = "preferences-desktop-display"
+APP_ID = "dev.skornex.Display"
+
+SAVED = os.path.expanduser("~/.config/skornex/autostart.d/display")
+SCALES = [1.0, 1.25, 1.5, 1.75, 2.0]
+ORIENTATIONS = [("normal", "Landscape"), ("90", "Portrait"),
+                ("180", "Landscape (flipped)"), ("270", "Portrait (flipped)")]
+REVERT_SECONDS = 15
+
+
+def read_outputs():
+    try:
+        out = subprocess.run(["wlr-randr", "--json"], capture_output=True, text=True, timeout=5).stdout
+        return json.loads(out or "[]")
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return []
+
+
+def state_of(output):
+    """The settings we change, as a plain dict."""
+    current = next((m for m in output.get("modes", []) if m.get("current")), None)
+    pos = output.get("position") or {}
+    return {
+        "enabled": output.get("enabled", True),
+        "mode": (current["width"], current["height"], current["refresh"]) if current else None,
+        "scale": float(output.get("scale") or 1.0),
+        "transform": output.get("transform") or "normal",
+        "pos": (pos.get("x", 0), pos.get("y", 0)),
+    }
+
+
+def logical_size(state):
+    w, h, _ = state["mode"]
+    w, h = w / state["scale"], h / state["scale"]
+    return (h, w) if state["transform"] in ("90", "270") else (w, h)
+
+
+def command(states):
+    cmd = ["wlr-randr"]
+    for name, s in states.items():
+        cmd += ["--output", name]
+        if not s["enabled"]:
+            cmd.append("--off")
+            continue
+        cmd.append("--on")
+        if s["mode"]:
+            w, h, r = s["mode"]
+            cmd += ["--mode", f"{w}x{h}@{r:.6f}Hz"]
+        cmd += ["--scale", f"{s['scale']:g}", "--transform", s["transform"],
+                "--pos", f"{int(s['pos'][0])},{int(s['pos'][1])}"]
+    return cmd
+
+
+def hz(rate):
+    return f"{rate:.2f}".rstrip("0").rstrip(".") + " Hz"
+
+
+class Page(Gtk.Box):
+    def __init__(self):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        self.set_border_width(24)
+        title = Gtk.Label(xalign=0)
+        title.set_markup(f"<span size='x-large' weight='bold'>{TITLE}</span>")
+        self.pack_start(title, False, False, 0)
+        self.cards = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        self.pack_start(self.cards, False, False, 0)
+        buttons = Gtk.Box(spacing=8)
+        self.apply_button = Gtk.Button(label="Apply")
+        self.apply_button.get_style_context().add_class("suggested-action")
+        self.apply_button.connect("clicked", lambda _b: self.apply())
+        refresh = Gtk.Button(label="Detect displays")
+        refresh.connect("clicked", lambda _b: self.load())
+        buttons.pack_end(self.apply_button, False, False, 0)
+        buttons.pack_end(refresh, False, False, 0)
+        self.pack_start(buttons, False, False, 0)
+        self.load()
+
+    def load(self):
+        for child in self.cards.get_children():
+            child.destroy()
+        self.outputs = {o["name"]: o for o in read_outputs()}
+        self.states = {name: state_of(o) for name, o in self.outputs.items()}
+        self.placement = {}  # name -> (where, other) chosen in "Position"
+        if not self.outputs:
+            note = Gtk.Label(label="No displays found. This needs a Wayland session (labwc) and wlr-randr.",
+                             xalign=0, wrap=True)
+            self.cards.pack_start(note, False, False, 0)
+        for name in self.outputs:
+            self.cards.pack_start(self.card(name), False, False, 0)
+        self.show_all()
+
+    def card(self, name):
+        output, state = self.outputs[name], self.states[name]
+        frame = Gtk.Frame()
+        label = Gtk.Label(xalign=0)
+        desc = output.get("description") or ""
+        label.set_markup(f"<b>{GLib.markup_escape_text(name)}</b>  "
+                         f"<span alpha='60%'>{GLib.markup_escape_text(desc)}</span>")
+        frame.set_label_widget(label)
+        grid = Gtk.Grid(row_spacing=8, column_spacing=16, margin=12)
+        frame.add(grid)
+        row = 0
+
+        def add(text, widget):
+            nonlocal row
+            grid.attach(Gtk.Label(label=text, xalign=0), 0, row, 1, 1)
+            widget.set_hexpand(True)
+            grid.attach(widget, 1, row, 1, 1)
+            row += 1
+
+        if len(self.outputs) > 1:
+            switch = Gtk.Switch(active=state["enabled"], halign=Gtk.Align.START)
+            switch.connect("notify::active", lambda s, _p: state.update(enabled=s.get_active()))
+            add("Use this display", switch)
+
+        modes = output.get("modes", [])
+        sizes = sorted({(m["width"], m["height"]) for m in modes}, key=lambda s: -s[0] * s[1])
+        preferred = next(((m["width"], m["height"]) for m in modes if m.get("preferred")), None)
+        res = Gtk.ComboBoxText()
+        for w, h in sizes:
+            res.append(f"{w}x{h}", f"{w} × {h}" + ("  (recommended)" if (w, h) == preferred else ""))
+        rate = Gtk.ComboBoxText()
+
+        def fill_rates():
+            w, h = state["mode"][:2]
+            rate.remove_all()
+            rates = sorted({m["refresh"] for m in modes if (m["width"], m["height"]) == (w, h)}, reverse=True)
+            for r in rates:
+                rate.append(repr(r), hz(r))
+            current = state["mode"][2]
+            best = min(rates, key=lambda r: abs(r - current)) if rates else None
+            if best is not None:
+                rate.set_active_id(repr(best))
+
+        def on_res(combo):
+            if combo.get_active_id() and state["mode"]:
+                w, h = map(int, combo.get_active_id().split("x"))
+                state["mode"] = (w, h, state["mode"][2])
+                fill_rates()
+
+        def on_rate(combo):
+            if combo.get_active_id() and state["mode"]:
+                state["mode"] = state["mode"][:2] + (float(combo.get_active_id()),)
+
+        if state["mode"]:
+            res.set_active_id(f"{state['mode'][0]}x{state['mode'][1]}")
+            fill_rates()
+        res.connect("changed", on_res)
+        rate.connect("changed", on_rate)
+        add("Resolution", res)
+        add("Refresh rate", rate)
+
+        scale = Gtk.ComboBoxText()
+        scales = sorted(set(SCALES) | {state["scale"]})
+        for s in scales:
+            scale.append(repr(s), f"{round(s * 100)}%" + ("  (recommended)" if s == 1.0 else ""))
+        scale.set_active_id(repr(state["scale"]))
+        scale.connect("changed", lambda c: state.update(scale=float(c.get_active_id())))
+        add("Scale (text and app size)", scale)
+
+        orient = Gtk.ComboBoxText()
+        for value, text in ORIENTATIONS:
+            orient.append(value, text)
+        if not orient.set_active_id(state["transform"]):
+            orient.append(state["transform"], state["transform"])
+            orient.set_active_id(state["transform"])
+        orient.connect("changed", lambda c: state.update(transform=c.get_active_id()))
+        add("Orientation", orient)
+
+        if len(self.outputs) > 1:
+            place = Gtk.ComboBoxText()
+            place.append("", "Where it is now")
+            for other in self.outputs:
+                if other != name:
+                    for where, text in (("right", "Right of"), ("left", "Left of"),
+                                        ("above", "Above"), ("below", "Below")):
+                        place.append(f"{where}:{other}", f"{text} {other}")
+            place.set_active_id("")
+
+            def on_place(combo):
+                if combo.get_active_id():
+                    self.placement[name] = tuple(combo.get_active_id().split(":", 1))
+                else:
+                    self.placement.pop(name, None)
+            place.connect("changed", on_place)
+            add("Position", place)
+        return frame
+
+    def place(self, states):
+        for name, (where, other) in self.placement.items():
+            me, them = states[name], states.get(other)
+            if not them or not me["mode"] or not them["mode"]:
+                continue
+            ow, oh = logical_size(them)
+            mw, mh = logical_size(me)
+            ox, oy = them["pos"]
+            me["pos"] = {"right": (ox + ow, oy), "left": (ox - mw, oy),
+                         "above": (ox, oy - mh), "below": (ox, oy + oh)}[where]
+        # Keep everything at positive coordinates, with the top-left at 0,0.
+        on = [s for s in states.values() if s["enabled"]]
+        if on:
+            min_x = min(s["pos"][0] for s in on)
+            min_y = min(s["pos"][1] for s in on)
+            for s in on:
+                s["pos"] = (s["pos"][0] - min_x, s["pos"][1] - min_y)
+
+    def apply(self):
+        if not self.states:
+            return
+        if not any(s["enabled"] for s in self.states.values()):
+            self.message("At least one display has to stay on.")
+            return
+        before = {name: state_of(o) for name, o in self.outputs.items()}
+        after = {name: dict(s) for name, s in self.states.items()}
+        self.place(after)
+        if subprocess.run(command(after)).returncode != 0:
+            self.message("That didn't work. The display may not support those settings.")
+            subprocess.run(command(before))
+            return
+        if self.confirm_keep():
+            self.save(after)
+        else:
+            subprocess.run(command(before))
+        self.load()
+
+    def confirm_keep(self):
+        dialog = Gtk.MessageDialog(transient_for=self.get_toplevel(), modal=True,
+                                   message_type=Gtk.MessageType.QUESTION,
+                                   text="Keep these display settings?")
+        dialog.add_buttons("Revert", Gtk.ResponseType.CANCEL, "Keep changes", Gtk.ResponseType.OK)
+        left = [REVERT_SECONDS]
+
+        def tick():
+            left[0] -= 1
+            dialog.format_secondary_text(f"Going back to the previous settings in {left[0]} seconds.")
+            if left[0] <= 0:
+                dialog.response(Gtk.ResponseType.CANCEL)
+                return False
+            return True
+        dialog.format_secondary_text(f"Going back to the previous settings in {REVERT_SECONDS} seconds.")
+        timer = GLib.timeout_add_seconds(1, tick)
+        answer = dialog.run()
+        if left[0] > 0:
+            GLib.source_remove(timer)
+        dialog.destroy()
+        return answer == Gtk.ResponseType.OK
+
+    def save(self, states):
+        os.makedirs(os.path.dirname(SAVED), exist_ok=True)
+        with open(SAVED, "w") as f:
+            f.write("#!/bin/sh\n# Made by Display settings: your screen layout, applied at login.\n")
+            f.write(" ".join(GLib.shell_quote(a) for a in command(states)) + "\n")
+        os.chmod(SAVED, 0o755)
+
+    def message(self, text):
+        dialog = Gtk.MessageDialog(transient_for=self.get_toplevel(), modal=True,
+                                   message_type=Gtk.MessageType.WARNING,
+                                   buttons=Gtk.ButtonsType.OK, text=text)
+        dialog.run()
+        dialog.destroy()
+
+
+def main():
+    GLib.set_prgname(APP_ID)
+    app = Gtk.Application(application_id=APP_ID)
+
+    def activate(app):
+        if app.get_windows():
+            app.get_windows()[0].present()
+            return
+        Gtk.Settings.get_default().props.gtk_application_prefer_dark_theme = True
+        window = Gtk.ApplicationWindow(application=app, title=f"{TITLE} settings")
+        window.set_default_size(720, 600)
+        window.set_icon_name(ICON)
+        scroller = Gtk.ScrolledWindow()
+        scroller.add(Page())
+        window.add(scroller)
+        window.show_all()
+    app.connect("activate", activate)
+    sys.exit(app.run(sys.argv))
+
+
+if __name__ == "__main__":
+    main()

@@ -92,11 +92,29 @@ for pkg_dir in "$REPO_DIR"/dotfiles/*/; do
     stow --dir="$REPO_DIR/dotfiles" --target="$HOME" --no-folding --restow "$pkg"
 done
 # Remove links left behind by files that were deleted from the repo.
-find "$HOME/.config" "$HOME/.local" -xtype l -lname '*LinuxSetup/dotfiles/*' -delete 2>/dev/null || true
+find "$HOME/.config" "$HOME/.local" -xtype l \( -lname '*LinuxSetup/dotfiles/*' -o -lname '*LinuxSetup/modules/*' \) \
+    -delete 2>/dev/null || true
 # An icon cache left here by another app (Steam, Wine…) hides the SkorneX
 # icons from labwc, which then shows its own logo in the title bar. Without a
 # cache, labwc and GTK read the folder directly.
 rm -f "$HOME/.local/share/icons/hicolor/icon-theme.cache"
+
+# --- 4b. Settings modules ---
+# Each one (Display, Sound, Mouse...) is its own small app; see modules/ and
+# skornex-module. This updates the ones you have and adds the ones picked
+# during setup (SKORNEX_MODULES, from bootstrap.sh).
+mapfile -t modules < <("$HOME/.local/bin/skornex-module" installed)
+read -ra wanted <<<"${SKORNEX_MODULES:-}"
+modules+=("${wanted[@]}")
+if ((${#modules[@]})); then
+    info "Installing settings modules: ${modules[*]}"
+    "$HOME/.local/bin/skornex-module" add "${modules[@]}"
+fi
+
+# --- 4c. Window manager settings ---
+# labwc's rc.xml and environment are built from SkorneX's base files plus the
+# changes Settings modules saved (skornex-labwc).
+"$HOME/.local/bin/skornex-labwc" --no-reload
 
 # --- 5. Colors ---
 info "Applying colors..."

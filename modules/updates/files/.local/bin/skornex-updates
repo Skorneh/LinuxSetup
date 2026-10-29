@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+"""SkorneX Updates: see what's waiting to be updated (apps and system, AUR
+apps, and SkorneX itself) and install it with one button, like Windows
+Update.
+
+    skornex-updates     open it on its own (or search "Updates")
+
+It's also a page in Settings (skornex-settings). Installing opens a Terminal,
+because updating asks for your password and can ask questions. "Remind me"
+puts a check in ~/.config/skornex/autostart.d/updates that tells you at login
+when updates are waiting.
+"""
+
+import os
+import re
+import subprocess
+import sys
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gio, GLib, Gtk  # noqa: E402
+
+TITLE = "Updates"
+ICON = "system-software-update"
+APP_ID = "dev.skornex.Updates"
+
+REPO = os.path.expanduser("~/LinuxSetup")
+REMINDER = os.path.expanduser("~/.config/skornex/autostart.d/updates")
+REMINDER_SCRIPT = """#!/bin/sh
+# Made by Updates (skornex-updates): tells you at login when updates are waiting.
+sleep 90
+n=$( (checkupdates; paru -Qua) 2>/dev/null | wc -l)
+if [ "$n" -gt 0 ]; then
+    notify-send -i system-software-update "Updates available" \\
+        "$n updates are ready. Open Updates to install them."
+fi
+"""
+
+
+def run_async(cmd, done):
+    def finish(proc, result):
+        try:
+            _ok, out, _err = proc.communicate_utf8_finish(result)
+        except GLib.Error:
+            out = ""
+        done(out or "", proc.get_exit_status() if proc.get_if_exited() else -1)
+    try:
+        proc = Gio.Subprocess.new(cmd, Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE)
+    except GLib.Error:
+        done("", -1)
+        return
+    proc.communicate_utf8_async(None, None, finish)
+
+
+def parse_updates(text, source):
+    rows = []
+    for line in text.splitlines():
+        m = re.match(r"(\S+) (\S+) -> (\S+)", line.strip())
+        if m:
+            rows.append((m.group(1), m.group(2), m.group(3), source))
+    return rows
+
+
+def last_update():
+    try:
+        with open("/var/log/pacman.log", errors="replace") as f:
+            stamps = [line[1:11] for line in f if "starting full system upgrade" in line]
+    except OSError:
+        return None
+    return stamps[-1] if stamps else None
+
+
+class Page(Gtk.Box):
+    def __init__(self):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        self.set_border_width(24)
+        title = Gtk.Label(xalign=0)
+        title.set_markup(f"<span size='x-large' weight='bold'>{TITLE}</span>")
+        self.pack_start(title, False, False, 0)
+
+        self.status = Gtk.Label(xalign=0)
+        self.status.set_markup("<b>Checking for updates…</b>")
+        self.pack_start(self.status, False, False, 0)
+        self.last = Gtk.Label(xalign=0)
+        self.last.get_style_context().add_class("dim-label")
+        self.pack_start(self.last, False, False, 0)
+
+        buttons = Gtk.Box(spacing=8)
+        self.install = Gtk.Button(label="Install updates")
+        self.install.get_style_context().add_class("suggested-action")
+        self.install.connect("clicked", lambda _b: self.terminal(
+            "paru -Syu", "Updating apps and system. Type your password when asked."))
+        self.skornex = Gtk.Button(label="Update SkorneX")
+        self.skornex.connect("clicked", lambda _b: self.terminal(
+            f"cd {GLib.shell_quote(REPO)} && git pull && ./install.sh", "Updating SkorneX."))
+        check = Gtk.Button(label="Check again")
+        check.connect("clicked", lambda _b: self.check())
+        buttons.pack_start(self.install, False, False, 0)
+        buttons.pack_start(self.skornex, False, False, 0)
+        buttons.pack_end(check, False, False, 0)
+        self.pack_start(buttons, False, False, 0)
+
+        self.store = Gtk.ListStore(str, str, str, str)
+        view = Gtk.TreeView(model=self.store)
+        for i, name in enumerate(["Name", "Installed", "New version", "From"]):
+            column = Gtk.TreeViewColumn(name, Gtk.CellRendererText(), text=i)
+            column.set_sort_column_id(i)
+            column.set_resizable(True)
+            view.append_column(column)
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_min_content_height(260)
+        scroller.add(view)
+        self.pack_start(scroller, True, True, 0)
+
+        remind = Gtk.CheckButton(label="Remind me when updates are waiting (checks when you log in)")
+        remind.set_active(os.path.exists(REMINDER))
+        remind.connect("toggled", lambda b: self.set_reminder(b.get_active()))
+        self.pack_start(remind, False, False, 0)
+        self.check()
+
+    def check(self):
+        self.status.set_markup("<b>Checking for updates…</b>")
+        self.install.set_sensitive(False)
+        self.skornex.set_sensitive(False)
+        self.store.clear()
+        self.results = {}
+        stamp = last_update()
+        self.last.set_text(f"Last updated: {stamp}" if stamp else "")
+        # checkupdates uses a copy of the package lists, so it's safe while
+        # nothing is being installed; exit code 2 means "no updates".
+        run_async(["checkupdates"], lambda out, _c: self.got("repo", parse_updates(out, "Arch")))
+        run_async(["paru", "-Qua"], lambda out, _c: self.got("aur", parse_updates(out, "AUR")))
+        if os.path.isdir(os.path.join(REPO, ".git")):
+            run_async(["git", "-C", REPO, "fetch", "-q"], lambda _o, _c: run_async(
+                ["git", "-C", REPO, "log", "--format=%s", "HEAD..@{u}"],
+                lambda out, _c2: self.got("skornex", [(line, "", "", "SkorneX") for line in out.splitlines()])))
+        else:
+            self.got("skornex", [])
+
+    def got(self, source, rows):
+        self.results[source] = rows
+        for row in rows:
+            self.store.append(list(row))
+        if len(self.results) < 3:
+            return
+        apps = len(self.results["repo"]) + len(self.results["aur"])
+        changes = len(self.results["skornex"])
+        if apps or changes:
+            parts = []
+            if apps:
+                parts.append(f"{apps} app and system update{'s' if apps != 1 else ''}")
+            if changes:
+                parts.append(f"a SkorneX update ({changes} change{'s' if changes != 1 else ''})")
+            self.status.set_markup(f"<b>{' and '.join(parts).capitalize()} ready to install.</b>")
+        else:
+            self.status.set_markup("<b>You're up to date.</b>")
+        self.install.set_sensitive(apps > 0)
+        self.skornex.set_sensitive(changes > 0)
+
+    def terminal(self, command, intro):
+        script = f"echo {GLib.shell_quote(intro)}; echo; {command}; echo; read -rp 'Done. Press Enter to close.' _"
+        try:
+            proc = Gio.Subprocess.new(["kitty", "--title", "Updates", "sh", "-c", script], Gio.SubprocessFlags.NONE)
+        except GLib.Error:
+            return
+        self.status.set_markup("<b>Updating in the Terminal window…</b>")
+        proc.wait_async(None, lambda *_: self.check())
+
+    @staticmethod
+    def set_reminder(on):
+        if on:
+            os.makedirs(os.path.dirname(REMINDER), exist_ok=True)
+            with open(REMINDER, "w") as f:
+                f.write(REMINDER_SCRIPT)
+            os.chmod(REMINDER, 0o755)
+        else:
+            try:
+                os.remove(REMINDER)
+            except FileNotFoundError:
+                pass
+
+
+def main():
+    GLib.set_prgname(APP_ID)
+    app = Gtk.Application(application_id=APP_ID)
+
+    def activate(app):
+        if app.get_windows():
+            app.get_windows()[0].present()
+            return
+        Gtk.Settings.get_default().props.gtk_application_prefer_dark_theme = True
+        window = Gtk.ApplicationWindow(application=app, title=TITLE)
+        window.set_default_size(720, 600)
+        window.set_icon_name(ICON)
+        window.add(Page())
+        window.show_all()
+    app.connect("activate", activate)
+    sys.exit(app.run(sys.argv))
+
+
+if __name__ == "__main__":
+    main()

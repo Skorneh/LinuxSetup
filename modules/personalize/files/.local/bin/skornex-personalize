@@ -1,0 +1,240 @@
+#!/usr/bin/env python3
+"""SkorneX Personalize: color themes, your own accent color, and a desktop
+wallpaper, like Windows' Personalization settings.
+
+    skornex-personalize     open it on its own (or search "Personalize")
+
+It's also a page in Settings (skornex-settings). Colors are saved in
+~/.config/skornex/colors.user, on top of SkorneX's colors file, and applied
+with skornex-theme (taskbar, desktop, notifications, terminal, window borders,
+lock screen). The wallpaper is saved in ~/.config/skornex/wallpaper; the
+desktop picks it up right away.
+"""
+
+import os
+import subprocess
+import sys
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+from gi.repository import Gdk, GLib, Gtk  # noqa: E402
+
+TITLE = "Personalize"
+ICON = "preferences-desktop-wallpaper"
+APP_ID = "dev.skornex.Personalize"
+
+CONFIG = os.path.expanduser("~/.config/skornex")
+COLORS = os.path.join(CONFIG, "colors")
+USER_COLORS = os.path.join(CONFIG, "colors.user")
+WALLPAPER = os.path.join(CONFIG, "wallpaper")
+KEYS = ["BG", "SURFACE", "BORDER", "MUTED", "TEXT", "ACCENT", "URGENT"]
+
+THEMES = {
+    "Graphite": "0b0b0c 1c1c1f 2c2c31 8e8e96 d4d4d8 a1a1aa d97070",
+    "Midnight": "0b0e14 161b26 232a38 8a93a6 d6dbe6 6c9cf0 e06c75",
+    "Forest": "0b0f0c 161d18 233028 8a9a8f d5e0d8 6fbf8a e07a6c",
+    "Plum": "0f0b12 1c1622 2c2434 9a8fa6 ddd5e6 b48ce8 e0707a",
+    "Ember": "100c0a 1f1813 33281f a6968a e6dcd5 e8a05c e06060",
+}
+THEMES = {name: dict(zip(KEYS, values.split())) for name, values in THEMES.items()}
+MODES = [("fill", "Fill"), ("fit", "Fit"), ("stretch", "Stretch"), ("center", "Center")]
+
+
+def read_values(path, into=None):
+    values = dict(into or {})
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.split("#", 1)[0].strip()
+                if "=" in line:
+                    key, value = line.split("=", 1)
+                    values[key.strip()] = value.strip()
+    except OSError:
+        pass
+    return values
+
+
+def current_colors():
+    return read_values(USER_COLORS, read_values(COLORS, THEMES["Graphite"]))
+
+
+def apply_colors(colors):
+    with open(USER_COLORS, "w") as f:
+        f.write("# Made by Personalize (skornex-personalize). Delete this file to go back to\n"
+                "# SkorneX's colors (~/.config/skornex/colors), then run skornex-theme.\n")
+        for key in KEYS:
+            f.write(f"{key}={colors[key]}\n")
+    subprocess.Popen([os.path.expanduser("~/.local/bin/skornex-theme")], stdout=subprocess.DEVNULL)
+
+
+def rgb(value):
+    return tuple(int(value[i:i + 2], 16) / 255 for i in (0, 2, 4))
+
+
+def to_hex(rgba):
+    return "".join(f"{round(c * 255):02x}" for c in (rgba.red, rgba.green, rgba.blue))
+
+
+class Swatches(Gtk.DrawingArea):
+    """A small preview strip of a theme's colors."""
+
+    def __init__(self, colors):
+        super().__init__()
+        self.colors = colors
+        self.set_size_request(140, 54)
+        self.connect("draw", self.on_draw)
+
+    def on_draw(self, _w, cr):
+        w, h = self.get_allocated_width(), self.get_allocated_height()
+        cr.set_source_rgb(*rgb(self.colors["BG"]))
+        cr.rectangle(0, 0, w, h)
+        cr.fill()
+        cr.set_source_rgb(*rgb(self.colors["SURFACE"]))
+        cr.rectangle(0, h - 14, w, 14)  # a little taskbar
+        cr.fill()
+        cr.set_source_rgb(*rgb(self.colors["ACCENT"]))
+        cr.rectangle(8, h - 4, 18, 2)
+        cr.fill()
+        cr.set_source_rgb(*rgb(self.colors["BORDER"]))
+        cr.rectangle(30, 8, 70, 26)  # a little window
+        cr.fill()
+        cr.set_source_rgb(*rgb(self.colors["SURFACE"]))
+        cr.rectangle(31, 9, 68, 24)
+        cr.fill()
+        cr.set_source_rgb(*rgb(self.colors["TEXT"]))
+        cr.rectangle(36, 14, 40, 3)
+        cr.fill()
+        cr.set_source_rgb(*rgb(self.colors["MUTED"]))
+        cr.rectangle(36, 21, 28, 3)
+        cr.fill()
+
+
+class Page(Gtk.Box):
+    def __init__(self):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        self.set_border_width(24)
+        title = Gtk.Label(xalign=0)
+        title.set_markup(f"<span size='x-large' weight='bold'>{TITLE}</span>")
+        self.pack_start(title, False, False, 0)
+
+        self.pack_start(self.heading("Colors"), False, False, 0)
+        themes = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=5,
+                             column_spacing=8, row_spacing=8)
+        for name, colors in THEMES.items():
+            button = Gtk.Button()
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            box.pack_start(Swatches(colors), False, False, 0)
+            box.pack_start(Gtk.Label(label=name), False, False, 0)
+            button.add(box)
+            button.connect("clicked", lambda _b, c=colors: self.pick_theme(c))
+            themes.add(button)
+        self.pack_start(themes, False, False, 0)
+
+        accent_row = Gtk.Box(spacing=12)
+        accent_row.pack_start(Gtk.Label(label="Accent color (focused window, active app)"), False, False, 0)
+        self.accent = Gtk.ColorButton()
+        self.accent.set_rgba(Gdk.RGBA(*rgb(current_colors()["ACCENT"]), 1))
+        self.accent.connect("color-set", lambda b: self.pick_accent(to_hex(b.get_rgba())))
+        accent_row.pack_start(self.accent, False, False, 0)
+        default = Gtk.Button(label="Use SkorneX's colors")
+        default.connect("clicked", lambda _b: self.default_colors())
+        accent_row.pack_end(default, False, False, 0)
+        self.pack_start(accent_row, False, False, 0)
+        note = Gtk.Label(label="The taskbar blinks once while new colors are applied.", xalign=0)
+        note.get_style_context().add_class("dim-label")
+        self.pack_start(note, False, False, 0)
+
+        self.pack_start(self.heading("Wallpaper"), False, False, 0)
+        wall = read_values(WALLPAPER)
+        grid = Gtk.Grid(row_spacing=10, column_spacing=16)
+        self.pack_start(grid, False, False, 0)
+        grid.attach(Gtk.Label(label="Picture", xalign=0), 0, 0, 1, 1)
+        self.picture = Gtk.FileChooserButton(title="Choose a picture", action=Gtk.FileChooserAction.OPEN)
+        images = Gtk.FileFilter()
+        images.set_name("Pictures")
+        images.add_pixbuf_formats()
+        self.picture.add_filter(images)
+        pictures = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_PICTURES)
+        if wall.get("path") and os.path.exists(wall["path"]):
+            self.picture.set_filename(wall["path"])
+        elif pictures and os.path.isdir(pictures):
+            self.picture.set_current_folder(pictures)
+        self.picture.set_hexpand(True)
+        self.picture.connect("file-set", lambda *_: self.save_wallpaper())
+        grid.attach(self.picture, 1, 0, 1, 1)
+        grid.attach(Gtk.Label(label="Fit", xalign=0), 0, 1, 1, 1)
+        self.mode = Gtk.ComboBoxText()
+        for value, text in MODES:
+            self.mode.append(value, text)
+        self.mode.set_active_id(wall.get("mode", "fill"))
+        self.mode.connect("changed", lambda *_: self.save_wallpaper())
+        grid.attach(self.mode, 1, 1, 1, 1)
+        none = Gtk.Button(label="No picture (solid color)")
+        none.set_halign(Gtk.Align.START)
+        none.connect("clicked", lambda _b: self.clear_wallpaper())
+        self.pack_start(none, False, False, 0)
+
+    @staticmethod
+    def heading(text):
+        label = Gtk.Label(xalign=0)
+        label.set_markup(f"<b>{text}</b>")
+        label.set_margin_top(8)
+        return label
+
+    def pick_theme(self, colors):
+        apply_colors(colors)
+        self.accent.set_rgba(Gdk.RGBA(*rgb(colors["ACCENT"]), 1))
+
+    def pick_accent(self, value):
+        colors = current_colors()
+        colors["ACCENT"] = value
+        apply_colors(colors)
+
+    def default_colors(self):
+        try:
+            os.remove(USER_COLORS)
+        except FileNotFoundError:
+            pass
+        subprocess.Popen([os.path.expanduser("~/.local/bin/skornex-theme")], stdout=subprocess.DEVNULL)
+        self.accent.set_rgba(Gdk.RGBA(*rgb(current_colors()["ACCENT"]), 1))
+
+    def save_wallpaper(self):
+        path = self.picture.get_filename()
+        if not path:
+            return
+        with open(WALLPAPER, "w") as f:
+            f.write(f"# Made by Personalize (skornex-personalize).\npath={path}\n"
+                    f"mode={self.mode.get_active_id() or 'fill'}\n")
+
+    def clear_wallpaper(self):
+        try:
+            os.remove(WALLPAPER)
+        except FileNotFoundError:
+            pass
+        self.picture.unselect_all()
+
+
+def main():
+    GLib.set_prgname(APP_ID)
+    app = Gtk.Application(application_id=APP_ID)
+
+    def activate(app):
+        if app.get_windows():
+            app.get_windows()[0].present()
+            return
+        Gtk.Settings.get_default().props.gtk_application_prefer_dark_theme = True
+        window = Gtk.ApplicationWindow(application=app, title=TITLE)
+        window.set_default_size(760, 620)
+        window.set_icon_name(ICON)
+        scroller = Gtk.ScrolledWindow()
+        scroller.add(Page())
+        window.add(scroller)
+        window.show_all()
+    app.connect("activate", activate)
+    sys.exit(app.run(sys.argv))
+
+
+if __name__ == "__main__":
+    main()

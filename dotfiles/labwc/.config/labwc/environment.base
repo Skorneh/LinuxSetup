@@ -1,0 +1,5 @@
+# Environment for everything started inside labwc. skornex-labwc combines
+# this with ~/.config/skornex/labwc/*.env (from Settings) into `environment`.
+XKB_DEFAULT_LAYOUT=us
+XCURSOR_THEME=Adwaita
+XCURSOR_SIZE=24

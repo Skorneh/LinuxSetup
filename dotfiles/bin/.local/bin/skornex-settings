@@ -1,0 +1,238 @@
+#!/usr/bin/env python3
+"""SkorneX Settings: every Settings module you have, in one window.
+
+    skornex-settings            open it (or search "Settings")
+    skornex-settings display    open it on one module's page
+
+Each module (Display, Sound, Mouse...) is its own small app that also works
+on its own, so you can install only the ones you want, or change one without
+touching the others. Settings finds the ones you have in
+~/.local/share/skornex/settings/*.conf and shows them as pages. The last page,
+"Add or remove settings", installs and removes modules (skornex-module).
+"""
+
+import configparser
+import glob
+import importlib.machinery
+import importlib.util
+import os
+import shutil
+import sys
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gio, GLib, Gtk  # noqa: E402
+
+APP_ID = "dev.skornex.Settings"
+HOME = os.path.expanduser("~")
+REGISTRY = os.path.join(HOME, ".local", "share", "skornex", "settings")
+BIN = os.path.join(HOME, ".local", "bin")
+
+
+def module_info(path):
+    parser = configparser.ConfigParser(interpolation=None)
+    parser.read(path)
+    return dict(parser["Module"]) if parser.has_section("Module") else None
+
+
+def installed_modules():
+    mods = []
+    for path in sorted(glob.glob(os.path.join(REGISTRY, "*.conf"))):
+        info = module_info(path)
+        if info and info.get("program"):
+            mods.append(info)
+    order = ["display", "sound", "mouse", "keyboard", "shortcuts", "personalize", "updates"]
+    return sorted(mods, key=lambda m: (order.index(m["name"]) if m["name"] in order else 99, m["name"]))
+
+
+def available_modules():
+    """Every module in the repo, installed or not."""
+    repo = os.path.realpath(os.path.join(BIN, "skornex-module"))
+    modules_dir = os.path.join(os.path.dirname(repo), "..", "..", "..", "..", "modules")
+    mods = []
+    for path in sorted(glob.glob(os.path.join(modules_dir, "*", "files", ".local", "share",
+                                              "skornex", "settings", "*.conf"))):
+        info = module_info(path)
+        if info:
+            info["installed"] = os.path.exists(os.path.join(REGISTRY, info["name"] + ".conf"))
+            mods.append(info)
+    return mods
+
+
+def load_page(info):
+    """Imports a module's program and builds its Page."""
+    path = shutil.which(info["program"]) or os.path.join(BIN, info["program"])
+    name = "skornex_module_" + info["name"]
+    loader = importlib.machinery.SourceFileLoader(name, path)
+    spec = importlib.util.spec_from_loader(name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module.Page()
+
+
+class ManagePage(Gtk.Box):
+    """Add or remove settings: one switch per module."""
+
+    def __init__(self, window):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        self.window = window
+        self.set_border_width(24)
+        title = Gtk.Label(xalign=0)
+        title.set_markup("<span size='x-large' weight='bold'>Add or remove settings</span>")
+        self.pack_start(title, False, False, 0)
+        hint = Gtk.Label(xalign=0, wrap=True, label=(
+            "Each setting is its own small app, with its own entry in search. "
+            "Turn on the ones you want, then press Apply. Removing one keeps the settings "
+            "it already made."))
+        hint.get_style_context().add_class("dim-label")
+        self.pack_start(hint, False, False, 0)
+        self.grid = Gtk.Grid(row_spacing=12, column_spacing=16)
+        self.pack_start(self.grid, False, False, 8)
+        apply = Gtk.Button(label="Apply")
+        apply.get_style_context().add_class("suggested-action")
+        apply.set_halign(Gtk.Align.END)
+        apply.connect("clicked", lambda _b: self.apply())
+        self.pack_start(apply, False, False, 0)
+        self.fill()
+
+    def fill(self):
+        for child in self.grid.get_children():
+            child.destroy()
+        self.switches = {}
+        mods = available_modules()
+        if not mods:
+            self.grid.attach(Gtk.Label(label="No modules found in ~/LinuxSetup/modules.", xalign=0), 0, 0, 1, 1)
+        for row, info in enumerate(mods):
+            icon = Gtk.Image.new_from_icon_name(info.get("icon", "preferences-system"), Gtk.IconSize.DND)
+            text = Gtk.Label(xalign=0, wrap=True)
+            text.set_markup(f"<b>{GLib.markup_escape_text(info['title'])}</b>\n"
+                            f"<span alpha='65%'>{GLib.markup_escape_text(info.get('description', ''))}</span>")
+            text.set_hexpand(True)
+            switch = Gtk.Switch(active=info["installed"], valign=Gtk.Align.CENTER)
+            self.switches[info["name"]] = (switch, info["installed"])
+            self.grid.attach(icon, 0, row, 1, 1)
+            self.grid.attach(text, 1, row, 1, 1)
+            self.grid.attach(switch, 2, row, 1, 1)
+        self.grid.show_all()
+
+    def apply(self):
+        add = [n for n, (s, was) in self.switches.items() if s.get_active() and not was]
+        remove = [n for n, (s, was) in self.switches.items() if not s.get_active() and was]
+        if not add and not remove:
+            return
+        steps = []
+        if remove:
+            steps.append("skornex-module remove " + " ".join(remove))
+        if add:
+            steps.append("skornex-module add " + " ".join(add))
+        script = (f"export PATH={GLib.shell_quote(BIN)}:$PATH; " + " && ".join(steps)
+                  + "; echo; read -rp 'Done. Press Enter to close.' _")
+        try:
+            proc = Gio.Subprocess.new(["kitty", "--title", "Settings modules", "sh", "-c", script],
+                                      Gio.SubprocessFlags.NONE)
+        except GLib.Error:
+            return
+        proc.wait_async(None, lambda *_: (self.fill(), self.window.fill_sidebar()))
+
+
+class SettingsWindow(Gtk.ApplicationWindow):
+    def __init__(self, app):
+        super().__init__(application=app, title="Settings")
+        self.set_default_size(980, 680)
+        self.set_icon_name("preferences-system")
+        paned = Gtk.Box()
+        self.sidebar = Gtk.ListBox()
+        self.sidebar.set_size_request(220, -1)
+        self.sidebar.connect("row-selected", self.on_select)
+        side = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
+        side.add(self.sidebar)
+        paned.pack_start(side, False, False, 0)
+        paned.pack_start(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL), False, False, 0)
+        self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
+        paned.pack_start(self.stack, True, True, 0)
+        self.add(paned)
+        self.pages = {}
+        self.fill_sidebar()
+
+    def fill_sidebar(self):
+        current = self.current()
+        for row in self.sidebar.get_children():
+            row.destroy()
+        for name, page in list(self.pages.items()):
+            if name != "_manage":
+                self.stack.remove(page)
+                del self.pages[name]
+        self.mods = {m["name"]: m for m in installed_modules()}
+        for info in list(self.mods.values()) + [{"name": "_manage", "title": "Add or remove settings",
+                                                  "icon": "list-add"}]:
+            row = Gtk.ListBoxRow()
+            row.name = info["name"]
+            box = Gtk.Box(spacing=10, margin=10)
+            box.pack_start(Gtk.Image.new_from_icon_name(info.get("icon", "preferences-system"),
+                                                        Gtk.IconSize.LARGE_TOOLBAR), False, False, 0)
+            box.pack_start(Gtk.Label(label=info["title"], xalign=0), True, True, 0)
+            row.add(box)
+            self.sidebar.add(row)
+        self.sidebar.show_all()
+        self.select(current if current in self.mods else None)
+
+    def current(self):
+        row = self.sidebar.get_selected_row()
+        return row.name if row else None
+
+    def select(self, name):
+        rows = self.sidebar.get_children()
+        if not rows:
+            return
+        if name is None:
+            name = rows[0].name if self.mods else "_manage"
+        for row in rows:
+            if row.name == name:
+                self.sidebar.select_row(row)
+                return
+        self.sidebar.select_row(rows[-1])
+
+    def on_select(self, _box, row):
+        if row is None:
+            return
+        name = row.name
+        if name not in self.pages:
+            if name == "_manage":
+                page = ManagePage(self)
+            else:
+                try:
+                    page = load_page(self.mods[name])
+                except Exception as e:  # a broken module shouldn't take Settings down
+                    page = Gtk.Label(label=f"{self.mods[name]['title']} couldn't open:\n{e}", wrap=True)
+                    print(f"skornex-settings: {name}: {e}", file=sys.stderr)
+            if not isinstance(page, ManagePage) and not isinstance(page, Gtk.Label) \
+                    and name != "updates":
+                scroller = Gtk.ScrolledWindow()
+                scroller.add(page)
+                page = scroller
+            self.pages[name] = page
+            self.stack.add_named(page, name)
+            page.show_all()
+        self.stack.set_visible_child_name(name)
+
+
+class App(Gtk.Application):
+    def __init__(self):
+        super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
+
+    def do_command_line(self, command_line):
+        args = command_line.get_arguments()[1:]
+        Gtk.Settings.get_default().props.gtk_application_prefer_dark_theme = True
+        window = self.get_windows()[0] if self.get_windows() else SettingsWindow(self)
+        window.show_all()
+        if args:
+            window.select(args[0])
+        window.present()
+        return 0
+
+
+if __name__ == "__main__":
+    # The window's app ID, which labwc and the taskbar use to find the icon.
+    GLib.set_prgname(APP_ID)
+    sys.exit(App().run(sys.argv))

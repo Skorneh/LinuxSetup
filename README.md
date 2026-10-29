@@ -25,6 +25,7 @@ dig through: what you see is a handful of text files and small SkorneX tools.
 - [Install](#install)
 - [Gaming](#gaming)
 - [Using SkorneX](#using-skornex)
+- [Settings](#settings)
 - [Shortcuts](#shortcuts)
 - [Keeping it up to date](#keeping-it-up-to-date)
 - [Customizing](#customizing)
@@ -68,11 +69,13 @@ Take out the USB stick and log in with your user on the text screen.
 curl -fsSL https://raw.githubusercontent.com/Skorneh/LinuxSetup/main/bootstrap.sh | bash
 ```
 
-It asks two things up front:
+It asks three things up front:
 
 - **"Also install gaming?"** Answer **y** on a gaming PC: it also picks and
   installs the drivers for your graphics card. You can do it later instead,
   see [Gaming](#gaming).
+- **Which settings modules you want** (Display, Sound, Mouse…). Type their
+  names, `all`, or press Enter for none. See [Settings](#settings).
 - **Your password**, once.
 
 Then it runs by itself (10–30 minutes, depending on your internet) and
@@ -168,6 +171,28 @@ for options. Add app shortcuts from a taskbar button's right-click menu.
 
 Older X11 apps (Steam, Wine games) run through Xwayland, which is included.
 
+## Settings
+
+Settings come as **modules**: each one is its own small app, with its own
+entry in search, so you install only the ones you want and can change or
+remove one without touching the others.
+
+| Module | Search for | What it does |
+|---|---|---|
+| `display` | Display settings | Resolution, refresh rate, scale, orientation, and where each monitor sits. Asks "Keep these display settings?" and goes back after 15 seconds if you can't see anything. |
+| `sound` | Sound settings | Speakers or headphones, microphone, their volume, and each app's volume. |
+| `mouse` | Mouse settings | Pointer speed, acceleration, scroll speed and direction, swap buttons, double-click speed, pointer size, touchpad tap-to-click. |
+| `keyboard` | Keyboard settings | Keyboard layouts (languages) and the keys that switch them, key repeat, Num Lock. |
+| `shortcuts` | Keyboard shortcuts | Every shortcut in one list: change its keys, turn it off, or add your own to open an app or run a command. |
+| `personalize` | Personalize | Color themes (Graphite, Midnight, Forest, Plum, Ember), your own accent color, and a desktop wallpaper. |
+| `updates` | Updates | What's waiting to be updated (system, AUR apps, SkorneX itself), one button to install, and an optional reminder at login. |
+
+**Settings** (search "Settings") shows every module you have in one window.
+Its last page, **Add or remove settings**, turns modules on and off. From
+Terminal it's `skornex-module` (list), `skornex-module add sound mouse`, or
+`skornex-module remove display`. Removing a module keeps the settings it
+already made.
+
 ## Shortcuts
 
 | Keys | Action |
@@ -180,7 +205,8 @@ Older X11 apps (Steam, Wine games) run through Xwayland, which is included.
 | Win+D | Show desktop |
 | Win+Left / Win+Right | Snap to half the screen |
 | Win+Up / Win+Down | Maximize / minimize |
-| Win+Shift+Left / Right | Move the window to the other monitor |
+| Win+Shift+Left / Right | Move the window to the monitor on that side (needs two monitors) |
+| Win+Shift+Up / Down | Stretch the window to the full screen height / restore it |
 | Alt+Tab | Switch windows, with previews |
 | Alt+F4 | Close the window |
 | Ctrl+Alt+Q | Force-quit the window you're in |
@@ -209,14 +235,19 @@ search right away.
 
 ## Customizing
 
-- **Colors:** edit `~/.config/skornex/colors`, then run `skornex-theme`. It
-  updates the taskbar, desktop, notifications, terminal, window borders and
-  lock screen.
+- **Colors and wallpaper:** the Personalize module. By hand: put your values
+  in `~/.config/skornex/colors.user` (same format as
+  `~/.config/skornex/colors`), then run `skornex-theme`. It updates the
+  taskbar, desktop, notifications, terminal, window borders and lock screen.
 - **Pinned apps:** right-click a taskbar button to pin or unpin it. The list
   lives in `~/.config/skornex/pins`.
-- **Keyboard shortcuts and window behavior:** `~/.config/labwc/rc.xml` (labwc
-  [docs](https://labwc.github.io/labwc-config.5.html)). Press Win+Shift+R to
-  reload it.
+- **Keyboard shortcuts and window behavior:** the Keyboard shortcuts, Mouse
+  and Keyboard modules. By hand: labwc's settings
+  ([docs](https://labwc.github.io/labwc-config.5.html)) are built by
+  `skornex-labwc` from SkorneX's `~/.config/labwc/rc.base.xml` plus your
+  changes in `~/.config/skornex/labwc/*.xml` (a file there only needs the
+  parts it changes). Edit one of those, never `rc.xml`, then press
+  Win+Shift+R to rebuild and reload.
 - **Startup apps:** `~/.config/labwc/autostart`.
 
 Most of your settings are links into `~/LinuxSetup/dotfiles`, so editing them
@@ -274,7 +305,8 @@ include:
 | `gaming.sh` | `[multilib]`, GPU drivers, and the gaming apps. Safe to run again. |
 | `packages/` | Package lists: `pkglist.txt` (official repos), `aurlist.txt` (AUR), `gaming.txt`, and `removelist.txt` (packages older versions of SkorneX used, removed on update). |
 | `dotfiles/` | Config files, linked into your home folder with GNU Stow. Each folder mirrors `~`. |
-| `dotfiles/bin/.local/bin/` | The SkorneX tools: `skornex-bar` (taskbar and desktop), `skornex-taskmgr`, `skornex-paint`, `skornex-screenshot`, `skornex-theme`. |
+| `dotfiles/bin/.local/bin/` | The SkorneX tools: `skornex-bar` (taskbar and desktop), `skornex-taskmgr`, `skornex-paint`, `skornex-screenshot`, `skornex-theme`, `skornex-settings`, `skornex-module`, `skornex-labwc`. |
+| `modules/` | The Settings modules, one folder each. Everything in a module's `files/` folder is linked into your home folder by `skornex-module add`; its `files/.local/share/skornex/settings/NAME.conf` describes it and lists the packages it needs. To make your own, copy a module folder and change it. |
 | `dotfiles/apps/` | App list tweaks: kitty shown as Terminal, Mousepad as Notepad, Paint and Task Manager added, a few tools hidden from search. |
 | `dotfiles/skornex/.config/skornex/` | `colors` (all the colors) and `pins` (taskbar pins). |
 | `theme/templates/` | Configs that use the colors. `skornex-theme` fills them in. |

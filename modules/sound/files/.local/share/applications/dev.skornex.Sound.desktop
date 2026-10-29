@@ -1,0 +1,11 @@
+[Desktop Entry]
+# SkorneX Settings module (sound). Named after the window's app ID so the
+# taskbar and title bar find its icon.
+Type=Application
+Name=Sound settings
+Comment=Speakers, headphones and microphone, and each app's volume.
+Exec=skornex-sound
+Icon=preferences-desktop-sound
+StartupWMClass=dev.skornex.Sound
+Categories=Settings;
+Keywords=sound;audio;volume;speaker;headphones;microphone;mixer;

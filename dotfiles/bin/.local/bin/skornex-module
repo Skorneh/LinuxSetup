@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# skornex-module: add or remove SkorneX Settings modules.
+#
+#   skornex-module                  list the modules and which ones you have
+#   skornex-module add NAME...      install modules (and the packages they need)
+#   skornex-module remove NAME...   remove modules (your settings stay as they are)
+#   skornex-module add all
+#
+# Each module is its own small app with its own entry in search ("Display
+# settings", "Sound settings"...), so you can pick only the ones you want or
+# change one without touching the others. The Settings app shows every module
+# you have in one window.
+#
+# A module is a folder in the repo's modules/ directory. Everything in its
+# files/ folder is linked into your home folder, including its description
+# in files/.local/share/skornex/settings/NAME.conf (Packages= lists what it
+# needs from the official repos).
+set -euo pipefail
+
+self="$(readlink -f "$0")"
+repo="$(cd "$(dirname "$self")/../../../.." && pwd)"
+modules="$repo/modules"
+registry="$HOME/.local/share/skornex/settings"
+
+field() { sed -n "s/^$2=//p" "$modules/$1/files/.local/share/skornex/settings/$1.conf"; }
+exists() { [[ -f "$modules/$1/files/.local/share/skornex/settings/$1.conf" ]]; }
+installed() { [[ -e "$registry/$1.conf" ]]; }
+all_names() { for d in "$modules"/*/; do basename "$d"; done; }
+
+list() {
+    printf '%-12s %-10s %s\n' MODULE STATUS DESCRIPTION
+    for name in $(all_names); do
+        status=available
+        installed "$name" && status=installed
+        printf '%-12s %-10s %s\n' "$name" "$status" "$(field "$name" Description)"
+    done
+}
+
+names_from_args() {
+    for arg in "$@"; do
+        if [[ "$arg" == all ]]; then all_names; else echo "$arg"; fi
+    done
+}
+
+add() {
+    local name packages=()
+    for name in $(names_from_args "$@"); do
+        if ! exists "$name"; then
+            echo "skornex-module: there's no module called '$name'. Run skornex-module to see them." >&2
+            continue
+        fi
+        read -ra pkgs <<<"$(field "$name" Packages)"
+        packages+=("${pkgs[@]}")
+    done
+    if ((${#packages[@]})); then
+        sudo pacman -S --needed --noconfirm "${packages[@]}"
+    fi
+    for name in $(names_from_args "$@"); do
+        exists "$name" || continue
+        stow --dir="$modules/$name" --target="$HOME" --no-folding --restow files
+        echo "Added: $(field "$name" Title) settings"
+    done
+}
+
+remove() {
+    local name
+    for name in $(names_from_args "$@"); do
+        if installed "$name"; then
+            stow --dir="$modules/$name" --target="$HOME" --delete files
+            echo "Removed: $(field "$name" Title) settings"
+        fi
+    done
+}
+
+case "${1:-list}" in
+    list) list ;;
+    add) shift; add "$@" ;;
+    remove) shift; remove "$@" ;;
+    installed) for name in $(all_names); do installed "$name" && echo "$name"; done; true ;;
+    *) sed -n '2,8s/^# \{0,1\}//p' "$self"; exit 1 ;;
+esac

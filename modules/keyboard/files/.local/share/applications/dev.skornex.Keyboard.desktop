@@ -1,0 +1,11 @@
+[Desktop Entry]
+# SkorneX Settings module (keyboard). Named after the window's app ID so the
+# taskbar and title bar find its icon.
+Type=Application
+Name=Keyboard settings
+Comment=Keyboard layouts (languages), key repeat and Num Lock.
+Exec=skornex-keyboard
+Icon=input-keyboard
+StartupWMClass=dev.skornex.Keyboard
+Categories=Settings;
+Keywords=keyboard;layout;language;repeat;numlock;

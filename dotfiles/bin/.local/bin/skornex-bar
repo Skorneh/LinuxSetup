@@ -1187,6 +1187,8 @@ def add_to_desktop(info):
 
 
 POSITIONS_FILE = os.path.join(CONFIG, "desktop.json")
+# Wallpaper (from the Personalize settings module): path=... and mode=fill|fit|stretch|center.
+WALLPAPER_FILE = os.path.join(CONFIG, "wallpaper")
 CELL_W, CELL_H = 96, 100      # the desktop grid, like Windows' icon spacing
 GRID_MARGIN = 12
 
@@ -1297,6 +1299,11 @@ class Desktop(Gtk.Window):
         self.fixed = Gtk.Fixed()
         background.add(self.fixed)
         self.add(background)
+        # The wallpaper is painted under the icons, and follows its file live.
+        self.fixed.connect("draw", self.draw_wallpaper)
+        self.wall_monitor = Gio.File.new_for_path(WALLPAPER_FILE).monitor_file(Gio.FileMonitorFlags.NONE, None)
+        self.wall_monitor.connect("changed", lambda *_: GLib.idle_add(self.load_wallpaper))
+        self.load_wallpaper()
 
         self.icons = {}
         self.selected = None
@@ -1315,6 +1322,51 @@ class Desktop(Gtk.Window):
         GLib.timeout_add_seconds(3, self.update_trash)
         self.show_all()
         print("SkorneXDesktop started", file=sys.stderr, flush=True)
+
+    # --- Wallpaper ---
+
+    def load_wallpaper(self):
+        conf = {}
+        try:
+            with open(WALLPAPER_FILE) as f:
+                for line in f:
+                    if "=" in line and not line.startswith("#"):
+                        key, value = line.rstrip("\n").split("=", 1)
+                        conf[key.strip()] = value.strip()
+        except OSError:
+            pass
+        path = conf.get("path")
+        self.wallpaper = (path, conf.get("mode", "fill")) if path and os.path.isfile(path) else None
+        self.wallpaper_cache = None
+        self.queue_draw()
+        return False
+
+    def draw_wallpaper(self, widget, cr):
+        if not self.wallpaper:
+            return False
+        path, mode = self.wallpaper
+        w, h = widget.get_allocated_width(), widget.get_allocated_height()
+        key = (path, mode, w, h)
+        if not self.wallpaper_cache or self.wallpaper_cache[0] != key:
+            try:
+                pixbuf = GdkPixbuf.Pixbuf.new_from_file(path)
+            except GLib.Error as e:
+                print(f"SkorneXDesktop: can't load wallpaper {path}: {e}", file=sys.stderr, flush=True)
+                self.wallpaper = None
+                return False
+            pixbuf = pixbuf.apply_embedded_orientation() or pixbuf
+            pw, ph = pixbuf.get_width(), pixbuf.get_height()
+            if mode == "stretch":
+                sw, sh = w, h
+            else:
+                scale = {"fit": min(w / pw, h / ph), "fill": max(w / pw, h / ph)}.get(mode, 1)
+                sw, sh = max(1, round(pw * scale)), max(1, round(ph * scale))
+            scaled = pixbuf if (sw, sh) == (pw, ph) else pixbuf.scale_simple(sw, sh, GdkPixbuf.InterpType.BILINEAR)
+            self.wallpaper_cache = (key, scaled, (w - sw) // 2, (h - sh) // 2)
+        _key, scaled, x, y = self.wallpaper_cache
+        Gdk.cairo_set_source_pixbuf(cr, scaled, x, y)
+        cr.paint()
+        return False
 
     # --- Saved positions: {"name": [column, row]} ---
 

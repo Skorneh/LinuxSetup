@@ -1,4 +1,0 @@
-# Environment for everything started inside labwc.
-XKB_DEFAULT_LAYOUT=us
-XCURSOR_THEME=Adwaita
-XCURSOR_SIZE=24

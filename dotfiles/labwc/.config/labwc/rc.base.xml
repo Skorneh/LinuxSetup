@@ -1,9 +1,13 @@
 <?xml version="1.0"?>
 <!--
-  labwc settings. Windows float like on Windows; drag one to a screen edge
-  or corner to snap it. Colors live in themerc-override, made by skornex-theme.
-  All options: man 5 labwc-config. All actions: man 5 labwc-actions.
-  Save this file, then press Win+Shift+R (or run `labwc -r`) to reload.
+  SkorneX's labwc settings. Windows float like on Windows; drag one to a
+  screen edge or corner to snap it. Colors live in themerc-override, made by
+  skornex-theme. All options: man 5 labwc-config. Actions: man 5 labwc-actions.
+
+  labwc reads rc.xml, which skornex-labwc builds from this file plus the
+  changes Settings modules save in ~/.config/skornex/labwc/ (mouse.xml,
+  keyboard.xml, shortcuts.xml). Edit this file or those, never rc.xml, then
+  run `skornex-labwc` to rebuild and reload.
 -->
 <labwc_config>
 
@@ -139,11 +143,19 @@
     <keybind key="W-S-Right">
       <action name="MoveToOutput" direction="right" />
     </keybind>
+    <!-- Stretch to the full screen height, and back. -->
+    <keybind key="W-S-Up">
+      <action name="Maximize" direction="vertical" />
+    </keybind>
+    <keybind key="W-S-Down">
+      <action name="UnMaximize" />
+    </keybind>
     <keybind key="W-d">
       <action name="ToggleShowDesktop" />
     </keybind>
+    <!-- Rebuild and reload labwc's settings. -->
     <keybind key="W-S-r">
-      <action name="Reconfigure" />
+      <action name="Execute" command="~/.local/bin/skornex-labwc" />
     </keybind>
 
     <!-- Volume keys. -->

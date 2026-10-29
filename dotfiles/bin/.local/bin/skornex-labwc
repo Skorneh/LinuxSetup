@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+"""skornex-labwc: build labwc's settings and reload labwc.
+
+labwc reads ~/.config/labwc/rc.xml and ~/.config/labwc/environment. SkorneX
+builds them from two layers, so Settings modules never touch SkorneX's own
+files and each module only owns its own small file:
+
+    ~/.config/labwc/rc.base.xml       SkorneX's settings (from the repo)
+  + ~/.config/skornex/labwc/*.xml     changes from Settings (mouse.xml, ...)
+  = ~/.config/labwc/rc.xml
+
+    ~/.config/labwc/environment.base  + ~/.config/skornex/labwc/*.env
+  = ~/.config/labwc/environment
+
+How changes combine with the base:
+  - A <keybind key="..."> replaces the base keybind with the same key.
+    <keybind key="..." remove="yes"/> removes it.
+  - Elements with children are merged one level deeper; elements are matched
+    by tag plus their name/category attribute (<context name>, <device
+    category>).
+  - Anything else replaces the base element with the same tag, or is added.
+
+    skornex-labwc            build both files and reload labwc
+    skornex-labwc --no-reload
+"""
+
+import glob
+import os
+import subprocess
+import sys
+import xml.etree.ElementTree as ET
+
+HOME = os.path.expanduser("~")
+LABWC = os.path.join(HOME, ".config", "labwc")
+CHANGES = os.path.join(HOME, ".config", "skornex", "labwc")
+IDENTITY_ATTRS = ("name", "category")
+
+
+def identity(el):
+    if el.tag == "keybind":
+        return ("keybind", el.get("key"))
+    return (el.tag,) + tuple(el.get(a) for a in IDENTITY_ATTRS)
+
+
+def merge(base, change):
+    for child in list(change):
+        if not isinstance(child.tag, str):  # a comment
+            continue
+        key = identity(child)
+        matches = [b for b in base if isinstance(b.tag, str) and identity(b) == key]
+        if child.tag == "keybind" or not len(child):
+            for m in matches:
+                base.remove(m)
+            if child.get("remove") != "yes":
+                base.append(child)
+        elif matches:
+            merge(matches[0], child)
+        else:
+            base.append(child)
+
+
+def parse(path):
+    parser = ET.XMLParser(target=ET.TreeBuilder(insert_comments=True))
+    return ET.parse(path, parser)
+
+
+def write(path, text):
+    """Writes a real file (replacing a link left by older SkorneX versions)."""
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(text)
+    if os.path.islink(path):
+        os.unlink(path)
+    os.replace(tmp, path)
+
+
+def build_rc():
+    tree = parse(os.path.join(LABWC, "rc.base.xml"))
+    root = tree.getroot()
+    for path in sorted(glob.glob(os.path.join(CHANGES, "*.xml"))):
+        try:
+            merge(root, parse(path).getroot())
+        except ET.ParseError as e:
+            print(f"skornex-labwc: skipped {path}: {e}", file=sys.stderr)
+    ET.indent(tree, "  ")
+    header = ("<?xml version=\"1.0\"?>\n<!-- Made by skornex-labwc from rc.base.xml and "
+              "~/.config/skornex/labwc/*.xml. Don't edit: changes here are overwritten. -->\n")
+    write(os.path.join(LABWC, "rc.xml"), header + ET.tostring(root, encoding="unicode") + "\n")
+
+
+def build_environment():
+    values = {}
+    for path in [os.path.join(LABWC, "environment.base")] + sorted(glob.glob(os.path.join(CHANGES, "*.env"))):
+        try:
+            with open(path) as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        key, value = line.split("=", 1)
+                        values[key.strip()] = value.strip()
+        except OSError:
+            pass
+    lines = ["# Made by skornex-labwc from environment.base and ~/.config/skornex/labwc/*.env.",
+             "# Don't edit: changes here are overwritten."]
+    lines += [f"{k}={v}" for k, v in values.items()]
+    write(os.path.join(LABWC, "environment"), "\n".join(lines) + "\n")
+
+
+def reload_labwc():
+    subprocess.run(["pkill", "-HUP", "-x", "-u", str(os.getuid()), "labwc"],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def main():
+    build_rc()
+    build_environment()
+    if "--no-reload" not in sys.argv:
+        reload_labwc()
+
+
+if __name__ == "__main__":
+    main()

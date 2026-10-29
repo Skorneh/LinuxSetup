@@ -1,0 +1,350 @@
+#!/usr/bin/env python3
+"""SkorneX Keyboard shortcuts: see every shortcut, change its keys, turn it
+off, or add your own (open an app or run a command).
+
+    skornex-shortcuts     open it on its own (or search "Keyboard shortcuts")
+
+It's also a page in Settings (skornex-settings). SkorneX's shortcuts live in
+~/.config/labwc/rc.base.xml; your changes are saved separately in
+~/.config/skornex/labwc/shortcuts.xml, which skornex-labwc adds on top. "Reset
+all" deletes that file, which brings back SkorneX's shortcuts.
+"""
+
+import copy
+import os
+import subprocess
+import sys
+import xml.etree.ElementTree as ET
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gio, GLib, Gtk  # noqa: E402
+
+TITLE = "Keyboard shortcuts"
+ICON = "preferences-desktop-keyboard-shortcuts"
+APP_ID = "dev.skornex.Shortcuts"
+
+BASE = os.path.expanduser("~/.config/labwc/rc.base.xml")
+CHANGES = os.path.expanduser("~/.config/skornex/labwc/shortcuts.xml")
+
+MODIFIERS = [("W", "Win"), ("C", "Ctrl"), ("A", "Alt"), ("S", "Shift")]
+KEY_NAMES = {
+    "Super_L": "Win", "space": "Space", "Print": "Print Screen", "Escape": "Esc", "Return": "Enter",
+    "Prior": "Page Up", "Next": "Page Down", "Delete": "Delete", "Tab": "Tab",
+    "Left": "Left", "Right": "Right", "Up": "Up", "Down": "Down",
+    "XF86AudioRaiseVolume": "Volume up", "XF86AudioLowerVolume": "Volume down",
+    "XF86AudioMute": "Mute", "XF86AudioPlay": "Play/Pause", "XF86AudioNext": "Next track",
+    "XF86AudioPrev": "Previous track",
+}
+CHOOSABLE_KEYS = ([chr(c) for c in range(ord("a"), ord("z") + 1)] + [str(d) for d in range(10)]
+                  + [f"F{n}" for n in range(1, 13)]
+                  + ["space", "Tab", "Return", "Escape", "Delete", "Home", "End", "Prior", "Next",
+                     "Left", "Right", "Up", "Down", "Print", "XF86AudioPlay", "XF86AudioNext",
+                     "XF86AudioPrev", "XF86AudioRaiseVolume", "XF86AudioLowerVolume", "XF86AudioMute"])
+
+COMMANDS = [  # (piece of the command, what to call it)
+    ("skornex-bar search", "Open search"), ("skornex-bar run", "Run a command"),
+    ("skornex-bar power", "Power menu"), ("skornex-taskmgr", "Task Manager"),
+    ("skornex-screenshot region", "Screenshot: drag a box"),
+    ("skornex-screenshot full", "Screenshot: whole screen"),
+    ("skornex-screenshot save", "Screenshot: save to Pictures"),
+    ("skornex-labwc", "Reload SkorneX's window settings"), ("hyprlock", "Lock"),
+    ("set-volume @DEFAULT_AUDIO_SINK@ 5%+", "Volume up"), ("set-volume @DEFAULT_AUDIO_SINK@ 5%-", "Volume down"),
+    ("set-mute", "Mute"), ("nemo", "Open Files"), ("kitty", "Open Terminal"),
+]
+ACTIONS = {
+    "Close": "Close window", "Kill": "Force-quit window", "Iconify": "Minimize window",
+    "UnMaximize": "Restore window", "ToggleShowDesktop": "Show desktop",
+    "NextWindow": "Switch windows", "PreviousWindow": "Switch windows (backwards)",
+    "Reconfigure": "Reload window settings", "ToggleMaximize": "Maximize or restore window",
+}
+
+
+def key_label(key):
+    *mods, name = key.split("-") if key != "-" else ["-"]
+    names = dict(MODIFIERS)
+    return " + ".join([names.get(m, m) for m in mods] + [KEY_NAMES.get(name, name.upper() if len(name) == 1 else name)])
+
+
+def describe(bind):
+    action = bind.find("action")
+    if action is None:
+        return "(nothing)"
+    name = action.get("name", "")
+    if name == "Execute":
+        command = action.get("command", "")
+        if command.startswith("gtk-launch "):
+            app_id = command.split(" ", 1)[1]
+            try:
+                return f"Open {Gio.DesktopAppInfo.new(app_id + '.desktop').get_display_name()}"
+            except TypeError:  # that app isn't installed any more
+                return f"Open {app_id}"
+        for piece, text in COMMANDS:
+            if piece in command:
+                return text
+        return f"Run: {command}"
+    direction = action.get("direction")
+    if name == "Maximize":
+        return "Stretch window to full height" if direction == "vertical" else "Maximize window"
+    if name == "SnapToEdge":
+        return f"Snap window to the {direction}"
+    if name == "MoveToOutput":
+        return f"Move window to the {direction} monitor"
+    return ACTIONS.get(name, name)
+
+
+def read_binds(path):
+    try:
+        root = ET.parse(path).getroot()
+    except (OSError, ET.ParseError):
+        return []
+    keyboard = root.find("keyboard")
+    return list(keyboard.findall("keybind")) if keyboard is not None else []
+
+
+class Model:
+    """SkorneX's shortcuts plus your changes (removed keys, your own binds)."""
+
+    def __init__(self):
+        self.base = read_binds(BASE)
+        self.removed = set()
+        self.mine = []
+        for bind in read_binds(CHANGES):
+            if bind.get("remove") == "yes":
+                self.removed.add(bind.get("key"))
+            else:
+                self.mine.append(bind)
+
+    def effective(self):
+        mine_keys = {b.get("key") for b in self.mine}
+        out = [(b, False) for b in self.base
+               if b.get("key") not in self.removed and b.get("key") not in mine_keys]
+        return out + [(b, True) for b in self.mine]
+
+    def used_by(self, key):
+        return next((b for b, _ in self.effective() if b.get("key") == key), None)
+
+    def drop(self, key):
+        """Turns off whatever is on this key."""
+        self.mine = [b for b in self.mine if b.get("key") != key]
+        if any(b.get("key") == key for b in self.base):
+            self.removed.add(key)
+
+    def put(self, key, actions):
+        self.drop(key)
+        self.removed.discard(key)
+        bind = ET.Element("keybind", key=key)
+        for a in actions:
+            bind.append(copy.deepcopy(a))
+        self.mine.append(bind)
+
+    def save(self):
+        root = ET.Element("labwc_config")
+        root.append(ET.Comment(" Made by Keyboard shortcuts (skornex-shortcuts). "))
+        keyboard = ET.SubElement(root, "keyboard")
+        base_keys = {b.get("key") for b in self.base}
+        mine_keys = {b.get("key") for b in self.mine}
+        for key in sorted(self.removed & base_keys - mine_keys):
+            ET.SubElement(keyboard, "keybind", key=key, remove="yes")
+        for bind in self.mine:
+            keyboard.append(bind)
+        os.makedirs(os.path.dirname(CHANGES), exist_ok=True)
+        tree = ET.ElementTree(root)
+        ET.indent(tree, "  ")
+        tree.write(CHANGES, encoding="unicode", xml_declaration=True)
+        subprocess.run([os.path.expanduser("~/.local/bin/skornex-labwc")])
+
+
+class KeysDialog(Gtk.Dialog):
+    """Pick keys with buttons and a list (pressing a shortcut that's already
+    in use would trigger it instead of reaching this window)."""
+
+    def __init__(self, parent, title, key=None, with_command=False):
+        super().__init__(title=title, transient_for=parent, modal=True)
+        self.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Save", Gtk.ResponseType.OK)
+        self.set_default_response(Gtk.ResponseType.OK)
+        box = self.get_content_area()
+        box.set_spacing(10)
+        box.set_border_width(16)
+        mods, name = (key.split("-")[:-1], key.split("-")[-1]) if key else ([], "")
+        self.command = None
+        if with_command:
+            box.pack_start(Gtk.Label(label="What should it open?", xalign=0), False, False, 0)
+            self.app = Gtk.ComboBoxText()
+            for info in sorted((a for a in Gio.AppInfo.get_all() if a.should_show()),
+                               key=lambda a: a.get_display_name().lower()):
+                self.app.append(info.get_id().removesuffix(".desktop"), info.get_display_name())
+            self.app.append("", "A command (type it below)")
+            self.command = Gtk.Entry(placeholder_text="For example: firefox --private-window")
+            box.pack_start(self.app, False, False, 0)
+            box.pack_start(self.command, False, False, 0)
+        box.pack_start(Gtk.Label(label="Keys:", xalign=0), False, False, 0)
+        row = Gtk.Box(spacing=6)
+        self.toggles = {}
+        for code, text in MODIFIERS:
+            t = Gtk.ToggleButton(label=text, active=code in mods)
+            t.connect("toggled", lambda *_: self.update())
+            self.toggles[code] = t
+            row.pack_start(t, False, False, 0)
+        row.pack_start(Gtk.Label(label="+"), False, False, 0)
+        self.key = Gtk.ComboBoxText()
+        for k in CHOOSABLE_KEYS:
+            self.key.append(k, KEY_NAMES.get(k, k.upper() if len(k) == 1 else k))
+        if name and not self.key.set_active_id(name):
+            self.key.append(name, KEY_NAMES.get(name, name))
+            self.key.set_active_id(name)
+        self.key.connect("changed", lambda *_: self.update())
+        row.pack_start(self.key, True, True, 0)
+        box.pack_start(row, False, False, 0)
+        self.preview = Gtk.Label(xalign=0)
+        box.pack_start(self.preview, False, False, 0)
+        self.update()
+        self.show_all()
+
+    def value(self):
+        name = self.key.get_active_id()
+        if not name:
+            return None
+        return "-".join([c for c, _ in MODIFIERS if self.toggles[c].get_active()] + [name])
+
+    def update(self):
+        key = self.value()
+        self.preview.set_markup(f"<b>{GLib.markup_escape_text(key_label(key))}</b>" if key else "Pick a key")
+
+    def action(self):
+        """For a new shortcut: the <action> to run."""
+        app_id = self.app.get_active_id()
+        command = f"gtk-launch {app_id}" if app_id else self.command.get_text().strip()
+        return ET.Element("action", name="Execute", command=command) if command else None
+
+
+class Page(Gtk.Box):
+    def __init__(self):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        self.set_border_width(24)
+        title = Gtk.Label(xalign=0)
+        title.set_markup(f"<span size='x-large' weight='bold'>{TITLE}</span>")
+        self.pack_start(title, False, False, 0)
+        self.search = Gtk.SearchEntry(placeholder_text="Find a shortcut")
+        self.search.connect("search-changed", lambda *_: self.fill())
+        self.pack_start(self.search, False, False, 0)
+        self.list = Gtk.Grid(row_spacing=6, column_spacing=12)
+        self.pack_start(self.list, False, False, 0)
+        buttons = Gtk.Box(spacing=8)
+        add = Gtk.Button(label="Add a shortcut")
+        add.get_style_context().add_class("suggested-action")
+        add.connect("clicked", lambda _b: self.add())
+        reset = Gtk.Button(label="Reset all")
+        reset.connect("clicked", lambda _b: self.reset())
+        buttons.pack_start(add, False, False, 0)
+        buttons.pack_end(reset, False, False, 0)
+        self.pack_start(buttons, False, False, 8)
+        self.model = Model()
+        self.fill()
+
+    def fill(self):
+        for child in self.list.get_children():
+            child.destroy()
+        text = self.search.get_text().lower()
+        rows = sorted(self.model.effective(), key=lambda bm: describe(bm[0]).lower())
+        r = 0
+        for bind, mine in rows:
+            what, keys = describe(bind), key_label(bind.get("key"))
+            if text and text not in what.lower() and text not in keys.lower():
+                continue
+            name = Gtk.Label(label=what + ("  (yours)" if mine else ""), xalign=0)
+            name.set_hexpand(True)
+            keys_label = Gtk.Label(xalign=0)
+            keys_label.set_markup(f"<b>{GLib.markup_escape_text(keys)}</b>")
+            change = Gtk.Button(label="Change")
+            change.connect("clicked", lambda _b, b=bind: self.change(b))
+            off = Gtk.Button(label="Remove")
+            off.connect("clicked", lambda _b, k=bind.get("key"): self.remove(k))
+            for col, widget in enumerate((name, keys_label, change, off)):
+                self.list.attach(widget, col, r, 1, 1)
+            r += 1
+        self.list.show_all()
+
+    def pick(self, title, key=None, with_command=False):
+        dialog = KeysDialog(self.get_toplevel(), title, key, with_command)
+        while True:
+            if dialog.run() != Gtk.ResponseType.OK:
+                dialog.destroy()
+                return None, None
+            new_key = dialog.value()
+            action = dialog.action() if with_command else None
+            if not new_key or (with_command and action is None):
+                continue
+            taken = self.model.used_by(new_key)
+            if taken is not None and new_key != key and not self.confirm(
+                    f"{key_label(new_key)} is already used for “{describe(taken)}”. Use it for this instead?"):
+                continue
+            dialog.destroy()
+            return new_key, action
+
+    def change(self, bind):
+        old = bind.get("key")
+        new, _ = self.pick(f"New keys for “{describe(bind)}”", old)
+        if new and new != old:
+            actions = list(bind.findall("action"))
+            self.model.drop(old)
+            self.model.put(new, actions)
+            self.save()
+
+    def add(self):
+        key, action = self.pick("Add a shortcut", with_command=True)
+        if key:
+            self.model.put(key, [action])
+            self.save()
+
+    def remove(self, key):
+        if self.confirm(f"Turn off {key_label(key)}?"):
+            self.model.drop(key)
+            self.save()
+
+    def reset(self):
+        if self.confirm("Go back to SkorneX's shortcuts? Your changes and your own shortcuts are removed."):
+            try:
+                os.remove(CHANGES)
+            except FileNotFoundError:
+                pass
+            subprocess.run([os.path.expanduser("~/.local/bin/skornex-labwc")])
+            self.model = Model()
+            self.fill()
+
+    def save(self):
+        self.model.save()
+        self.fill()
+
+    def confirm(self, text):
+        dialog = Gtk.MessageDialog(transient_for=self.get_toplevel(), modal=True,
+                                   message_type=Gtk.MessageType.QUESTION,
+                                   buttons=Gtk.ButtonsType.YES_NO, text=text)
+        answer = dialog.run()
+        dialog.destroy()
+        return answer == Gtk.ResponseType.YES
+
+
+def main():
+    GLib.set_prgname(APP_ID)
+    app = Gtk.Application(application_id=APP_ID)
+
+    def activate(app):
+        if app.get_windows():
+            app.get_windows()[0].present()
+            return
+        Gtk.Settings.get_default().props.gtk_application_prefer_dark_theme = True
+        window = Gtk.ApplicationWindow(application=app, title=TITLE)
+        window.set_default_size(760, 640)
+        window.set_icon_name(ICON)
+        scroller = Gtk.ScrolledWindow()
+        scroller.add(Page())
+        window.add(scroller)
+        window.show_all()
+    app.connect("activate", activate)
+    sys.exit(app.run(sys.argv))
+
+
+if __name__ == "__main__":
+    main()

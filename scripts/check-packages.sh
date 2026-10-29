@@ -6,7 +6,11 @@ set -euo pipefail
 
 source "$(dirname "$0")/lib.sh"
 
-tracked="$(cat "$REPO_DIR"/packages/*.txt | sed -e 's/#.*//' -e 's/[[:space:]]*$//' | grep -v '^$' | sort -u)"
+tracked="$({
+    cat "$REPO_DIR"/packages/*.txt | sed -e 's/#.*//' -e 's/[[:space:]]*$//'
+    # Packages the Settings modules install (Packages= in each module's .conf).
+    sed -n 's/^Packages=//p' "$REPO_DIR"/modules/*/files/.local/share/skornex/settings/*.conf | tr ' ' '\n'
+} | grep -v '^$' | sort -u)"
 # Drivers and kernel headers are chosen by gaming.sh, so ignore them here.
 ignore='^(nvidia|lib32-nvidia|linux|mesa|lib32-mesa|vulkan-|lib32-vulkan-|paru|qemu-guest-agent)'
 

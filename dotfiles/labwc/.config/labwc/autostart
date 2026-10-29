@@ -25,6 +25,12 @@ keep_running() {
 keep_running skornex-bar
 keep_running skornex-desktop
 dunst >/dev/null 2>&1 &
+
+# Settings modules put things to run at login here (Display: your screen
+# layout; Updates: the update reminder).
+for script in ~/.config/skornex/autostart.d/*; do
+    [ -x "$script" ] && "$script" >/dev/null 2>&1 &
+done
 /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 >/dev/null 2>&1 &
 
 # Lock after 10 minutes idle, monitor off after 15. Videos and games that

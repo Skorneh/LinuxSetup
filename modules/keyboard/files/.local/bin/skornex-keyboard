@@ -1,0 +1,228 @@
+#!/usr/bin/env python3
+"""SkorneX Keyboard settings: keyboard layouts (languages), the keys that
+switch between them, key repeat, and Num Lock, like Windows' Keyboard and
+Language settings.
+
+    skornex-keyboard     open it on its own (or search "Keyboard settings")
+
+It's also a page in Settings (skornex-settings). Changes apply right away.
+They're saved in ~/.config/skornex/labwc/keyboard.xml and keyboard.env, which
+skornex-labwc adds to labwc's settings.
+"""
+
+import json
+import os
+import subprocess
+import sys
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import GLib, Gtk  # noqa: E402
+
+TITLE = "Keyboard"
+ICON = "input-keyboard"
+APP_ID = "dev.skornex.Keyboard"
+
+STATE = os.path.expanduser("~/.config/skornex/keyboard.json")
+CHANGES = os.path.expanduser("~/.config/skornex/labwc")
+RULES = "/usr/share/X11/xkb/rules/base.lst"
+DEFAULTS = {"layouts": ["us"], "switch": "grp:win_space_toggle", "delay": 600, "rate": 25, "numlock": True}
+SWITCH_KEYS = [("grp:win_space_toggle", "Win+Space"), ("grp:alt_shift_toggle", "Alt+Shift"),
+               ("grp:ctrl_shift_toggle", "Ctrl+Shift")]
+
+
+def all_layouts():
+    """{code: name} from xkeyboard-config's list, e.g. {"de": "German"}."""
+    layouts, section = {}, None
+    try:
+        with open(RULES) as f:
+            for line in f:
+                if line.startswith("!"):
+                    section = line.strip()
+                elif section == "! layout" and line.strip():
+                    code, _, name = line.strip().partition(" ")
+                    layouts[code] = name.strip()
+    except OSError:
+        pass
+    return layouts or {"us": "English (US)"}
+
+
+def load():
+    try:
+        with open(STATE) as f:
+            return {**DEFAULTS, **json.load(f)}
+    except (OSError, ValueError):
+        return json.loads(json.dumps(DEFAULTS))
+
+
+def save(s):
+    os.makedirs(CHANGES, exist_ok=True)
+    with open(STATE, "w") as f:
+        json.dump(s, f, indent=1)
+    with open(os.path.join(CHANGES, "keyboard.xml"), "w") as f:
+        f.write(f"""<?xml version="1.0"?>
+<!-- Made by Keyboard settings (skornex-keyboard). -->
+<labwc_config>
+  <keyboard>
+    <numlock>{"on" if s["numlock"] else "off"}</numlock>
+    <repeatRate>{int(s["rate"])}</repeatRate>
+    <repeatDelay>{int(s["delay"])}</repeatDelay>
+  </keyboard>
+</labwc_config>
+""")
+    lines = ["# Made by Keyboard settings (skornex-keyboard).", f"XKB_DEFAULT_LAYOUT={','.join(s['layouts'])}"]
+    if len(s["layouts"]) > 1:
+        lines.append(f"XKB_DEFAULT_OPTIONS={s['switch']}")
+    with open(os.path.join(CHANGES, "keyboard.env"), "w") as f:
+        f.write("\n".join(lines) + "\n")
+    subprocess.run([os.path.expanduser("~/.local/bin/skornex-labwc")])
+
+
+class Page(Gtk.Box):
+    def __init__(self):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        self.set_border_width(24)
+        self.s = load()
+        self.names = all_layouts()
+        self.pending = None
+        title = Gtk.Label(xalign=0)
+        title.set_markup(f"<span size='x-large' weight='bold'>{TITLE}</span>")
+        self.pack_start(title, False, False, 0)
+
+        self.pack_start(self.heading("Keyboard layouts"), False, False, 0)
+        hint = Gtk.Label(label="The first one is used when you log in. If a new layout doesn't "
+                         "work right away, log out and back in.", xalign=0, wrap=True)
+        hint.get_style_context().add_class("dim-label")
+        self.pack_start(hint, False, False, 0)
+        self.layout_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        self.pack_start(self.layout_list, False, False, 0)
+        add_row = Gtk.Box(spacing=8)
+        self.add_combo = Gtk.ComboBoxText()
+        for code, name in sorted(self.names.items(), key=lambda kv: kv[1].lower()):
+            self.add_combo.append(code, name)
+        add_button = Gtk.Button(label="Add layout")
+        add_button.connect("clicked", lambda _b: self.add_layout())
+        add_row.pack_start(self.add_combo, True, True, 0)
+        add_row.pack_start(add_button, False, False, 0)
+        self.pack_start(add_row, False, False, 0)
+
+        self.switch_row = Gtk.Box(spacing=12)
+        self.switch_row.pack_start(Gtk.Label(label="Switch layouts with"), False, False, 0)
+        switch = Gtk.ComboBoxText()
+        for value, text in SWITCH_KEYS:
+            switch.append(value, text)
+        switch.set_active_id(self.s["switch"])
+        switch.connect("changed", lambda c: self.changed("switch", c.get_active_id()))
+        self.switch_row.pack_start(switch, False, False, 0)
+        self.switch_row.set_no_show_all(True)  # only shown with 2+ layouts
+        self.pack_start(self.switch_row, False, False, 0)
+
+        self.pack_start(self.heading("Typing"), False, False, 0)
+        grid = Gtk.Grid(row_spacing=10, column_spacing=24)
+        self.pack_start(grid, False, False, 0)
+        self.slider(grid, 0, "Delay before a held key repeats", "delay", 150, 1000, 50, "Short", "Long")
+        self.slider(grid, 1, "Repeat speed", "rate", 5, 60, 1, "Slow", "Fast")
+        grid.attach(Gtk.Label(label="Num Lock on when you log in", xalign=0), 0, 2, 1, 1)
+        numlock = Gtk.Switch(active=self.s["numlock"], halign=Gtk.Align.START)
+        numlock.connect("notify::active", lambda w, _p: self.changed("numlock", w.get_active()))
+        grid.attach(numlock, 1, 2, 1, 1)
+        test = Gtk.Entry(placeholder_text="Type here to test")
+        self.pack_start(test, False, False, 8)
+        self.fill_layouts()
+
+    @staticmethod
+    def heading(text):
+        label = Gtk.Label(xalign=0)
+        label.set_markup(f"<b>{text}</b>")
+        label.set_margin_top(8)
+        return label
+
+    def slider(self, grid, row, text, key, low, high, step, left, right):
+        grid.attach(Gtk.Label(label=text, xalign=0), 0, row, 1, 1)
+        box = Gtk.Box(spacing=6)
+        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, low, high, step)
+        scale.set_draw_value(False)
+        scale.set_value(self.s[key])
+        scale.set_hexpand(True)
+        scale.set_size_request(220, -1)
+        scale.connect("value-changed", lambda sc: self.changed(key, sc.get_value()))
+        box.pack_start(Gtk.Label(label=left), False, False, 0)
+        box.pack_start(scale, True, True, 0)
+        box.pack_start(Gtk.Label(label=right), False, False, 0)
+        grid.attach(box, 1, row, 1, 1)
+
+    def fill_layouts(self):
+        for child in self.layout_list.get_children():
+            child.destroy()
+        for i, code in enumerate(self.s["layouts"]):
+            row = Gtk.Box(spacing=8)
+            row.pack_start(Gtk.Label(label=self.names.get(code, code), xalign=0), True, True, 0)
+            if i > 0:
+                up = Gtk.Button(label="Make first")
+                up.connect("clicked", lambda _b, c=code: self.move_first(c))
+                row.pack_start(up, False, False, 0)
+            if len(self.s["layouts"]) > 1:
+                remove = Gtk.Button(label="Remove")
+                remove.connect("clicked", lambda _b, c=code: self.remove_layout(c))
+                row.pack_start(remove, False, False, 0)
+            self.layout_list.pack_start(row, False, False, 0)
+        self.layout_list.show_all()
+        if len(self.s["layouts"]) > 1:
+            self.switch_row.show_all()
+        else:
+            self.switch_row.hide()
+
+    def add_layout(self):
+        code = self.add_combo.get_active_id()
+        if code and code not in self.s["layouts"] and len(self.s["layouts"]) < 4:
+            self.s["layouts"].append(code)
+            self.fill_layouts()
+            self.changed()
+
+    def remove_layout(self, code):
+        self.s["layouts"].remove(code)
+        self.fill_layouts()
+        self.changed()
+
+    def move_first(self, code):
+        self.s["layouts"].remove(code)
+        self.s["layouts"].insert(0, code)
+        self.fill_layouts()
+        self.changed()
+
+    def changed(self, key=None, value=None):
+        if key:
+            self.s[key] = value
+        if self.pending:
+            GLib.source_remove(self.pending)
+        self.pending = GLib.timeout_add(300, self.flush)
+
+    def flush(self):
+        self.pending = None
+        save(self.s)
+        return False
+
+
+def main():
+    GLib.set_prgname(APP_ID)
+    app = Gtk.Application(application_id=APP_ID)
+
+    def activate(app):
+        if app.get_windows():
+            app.get_windows()[0].present()
+            return
+        Gtk.Settings.get_default().props.gtk_application_prefer_dark_theme = True
+        window = Gtk.ApplicationWindow(application=app, title=f"{TITLE} settings")
+        window.set_default_size(640, 600)
+        window.set_icon_name(ICON)
+        scroller = Gtk.ScrolledWindow()
+        scroller.add(Page())
+        window.add(scroller)
+        window.show_all()
+    app.connect("activate", activate)
+    sys.exit(app.run(sys.argv))
+
+
+if __name__ == "__main__":
+    main()
