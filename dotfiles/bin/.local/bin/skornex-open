@@ -12,6 +12,8 @@ shift
 echo "$(date '+%F %T') open $app: $*" >> "$HOME/.cache/skornex-open.log"
 "$@" &
 for last; do :; done
-name=$(basename "${last:-}" 2>/dev/null)
-sleep 0.3
-exec "$HOME/.local/bin/skornex-bar" raise "$app" "$name"
+name=$(basename "${last:-}" 2>/dev/null | tr -d "'\\\\")
+# Ask the running taskbar over D-Bus (instant), else start skornex-bar to ask.
+gdbus call --session --dest dev.skornex.Bar --object-path /dev/skornex/Bar \
+    --method org.gtk.Actions.Activate raise "[<'$app|$name'>]" "{}" >/dev/null 2>&1 \
+    || exec "$HOME/.local/bin/skornex-bar" raise "$app" "$name"

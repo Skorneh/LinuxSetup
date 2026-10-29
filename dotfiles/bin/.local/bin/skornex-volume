@@ -1,0 +1,12 @@
+#!/bin/sh
+# skornex-volume up|down|mute: what the volume keys run. Changes the volume,
+# then has SkorneXBar show the small volume bar above its sound icon right
+# away (over D-Bus, so there's no wait).
+case "$1" in
+    up) wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+ ;;
+    down) wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
+    mute) wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
+    *) echo "usage: skornex-volume up|down|mute" >&2; exit 1 ;;
+esac
+exec gdbus call --session --dest dev.skornex.Bar --object-path /dev/skornex/Bar \
+    --method org.gtk.Actions.Activate volume-osd "[]" "{}" >/dev/null 2>&1

@@ -613,6 +613,47 @@ class Flyout(Gtk.Window):
             self.box.remove(child)
 
 
+class VolumeOsd(Gtk.Window):
+    """The small volume bar that pops up above the sound icon when you press
+    the volume keys, then fades away."""
+
+    def __init__(self):
+        super().__init__()
+        make_layer(self, GtkLayerShell.Layer.OVERLAY, [GtkLayerShell.Edge.BOTTOM, GtkLayerShell.Edge.RIGHT],
+                   namespace="skornex-osd")
+        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.BOTTOM, 8)
+        self.get_style_context().add_class("flyout")
+        self.get_style_context().add_class("osd")
+        box = Gtk.Box(spacing=10)
+        box.get_style_context().add_class("flyout-box")
+        self.icon = label("")
+        self.bar = Gtk.ProgressBar()
+        self.bar.set_valign(Gtk.Align.CENTER)
+        self.bar.set_size_request(150, -1)
+        self.percent = label("", "status")
+        self.percent.set_width_chars(4)
+        box.pack_start(self.icon, False, False, 0)
+        box.pack_start(self.bar, True, True, 0)
+        box.pack_start(self.percent, False, False, 0)
+        self.add(box)
+        self.timer = None
+
+    def show_level(self, level, muted, right):
+        self.icon.set_text(ICON_MUTED if muted else ICON_VOLUME[min(2, level // 34)])
+        self.bar.set_fraction(0 if muted else level / 100)
+        self.percent.set_text("Muted" if muted else f"{level}%")
+        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.RIGHT, max(8, right))
+        self.show_all()
+        if self.timer:
+            GLib.source_remove(self.timer)
+        self.timer = GLib.timeout_add(1500, self.fade)
+
+    def fade(self):
+        self.timer = None
+        self.hide()
+        return False
+
+
 class Catcher(Gtk.Window):
     """An invisible layer over everything but the taskbar while a flyout is
     open. Clicking it closes the flyout, like clicking away on Windows."""
@@ -855,10 +896,23 @@ class Bar(Gtk.Window):
         icon = ICON_MUTED if muted else ICON_VOLUME[min(2, level // 34)]
         self.vol_button.text.set_text(f"{icon} {level}%")
 
+    def show_volume_osd(self):
+        """Updates the sound icon now and pops the volume bar up above it."""
+        self.update_volume()
+        level, muted = self.volume()
+        if level is None or self.open_flyout == "volume":
+            return
+        if not hasattr(self, "osd"):
+            self.osd = VolumeOsd()
+        # Centered over the sound icon (the bar is anchored to the right edge).
+        alloc = self.vol_button.get_allocation()
+        right = self.get_allocated_width() - (alloc.x + alloc.width // 2) - 115
+        self.osd.show_level(level, muted, right)
+
     def on_volume_scroll(self, _w, event):
         step = "5%+" if event.direction == Gdk.ScrollDirection.UP or event.delta_y < 0 else "5%-"
         run("wpctl", "set-volume", "-l", "1.0", "@DEFAULT_AUDIO_SINK@", step)
-        self.update_volume()
+        self.show_volume_osd()
         return True
 
     def network(self):
@@ -1639,7 +1693,22 @@ class SkorneXBar(Gtk.Application):
         display = Gdk.Display.get_default()
         display.connect("monitor-added", lambda *_: GLib.timeout_add(500, self.quit))
         display.connect("monitor-removed", lambda *_: GLib.timeout_add(500, self.quit))
+        # "raise" over D-Bus, for skornex-open: much faster than starting a
+        # second skornex-bar just to pass the message on.
+        raise_action = Gio.SimpleAction.new("raise", GLib.VariantType.new("s"))
+        raise_action.connect("activate", lambda _a, param: self.raise_soon(*(param.get_string().split("|", 1) + [""])[:2]))
+        self.add_action(raise_action)
+        osd_action = Gio.SimpleAction.new("volume-osd", None)
+        osd_action.connect("activate", lambda *_: self.bar and self.bar.show_volume_osd())
+        self.add_action(osd_action)
         self.hold()
+
+    def raise_soon(self, app_id, hint):
+        """Raises right away and twice more, in case the app is still switching
+        to the file or opening its window."""
+        if self.bar:
+            for delay in (60, 250, 600):
+                GLib.timeout_add(delay, self.bar.raise_app, app_id, hint)
 
     def do_command_line(self, command_line):
         args = command_line.get_arguments()[1:]
@@ -1651,9 +1720,7 @@ class SkorneXBar(Gtk.Application):
         if args and args[0] in ("search", "power", "run"):
             self.bar.toggle(args[0])
         elif args[:1] == ["raise"] and len(args) >= 2:
-            # A moment later, so the app has switched to the file first.
-            hint = args[2] if len(args) > 2 else ""
-            GLib.timeout_add(300, self.bar.raise_app, args[1], hint)
+            self.raise_soon(args[1], args[2] if len(args) > 2 else "")
         return 0
 
 

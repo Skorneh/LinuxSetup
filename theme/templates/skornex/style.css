@@ -61,3 +61,8 @@ window.catcher { background-color: transparent; }
 .desktop-label { color: #${TEXT}; text-shadow: 0 1px 2px black; }
 .desktop-icon.selected { background-color: alpha(#${ACCENT}, 0.25); }
 .desktop-icon.dragging { background-color: alpha(#${SURFACE}, 0.6); }
+
+/* The volume bar that pops up when you press the volume keys. */
+window.osd .flyout-box { padding: 10px 14px; }
+.osd progressbar trough { min-height: 6px; background-color: #${SURFACE}; border-radius: 3px; border: none; }
+.osd progressbar progress { min-height: 6px; background-color: #${ACCENT}; border-radius: 3px; border: none; }

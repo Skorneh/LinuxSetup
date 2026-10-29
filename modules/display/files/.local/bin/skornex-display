@@ -193,6 +193,9 @@ class Arrangement(Gtk.DrawingArea):
         others = [r for n, r in rects.items() if n != name]
         self.page.states[name]["pos"] = snap(rects[name], others)
         self.queue_draw()
+        for child in self.page.apply_row.get_children():
+            child.show()
+        self.page.apply_row.show()
 
 
 def command(states):
@@ -225,20 +228,45 @@ class Page(Gtk.Box):
         self.arrangement = Arrangement(self)
         self.arrangement.set_no_show_all(True)  # only with two or more displays
         self.pack_start(self.arrangement, False, False, 0)
+        # Moving monitors waits for Apply (everything else applies right away).
+        self.apply_row = Gtk.Box(spacing=8)
+        apply = Gtk.Button(label="Apply")
+        apply.get_style_context().add_class("suggested-action")
+        apply.connect("clicked", lambda _b: self.apply())
+        cancel = Gtk.Button(label="Cancel")
+        cancel.connect("clicked", lambda _b: self.load())
+        self.apply_row.pack_end(apply, False, False, 0)
+        self.apply_row.pack_end(cancel, False, False, 0)
+        self.apply_row.set_no_show_all(True)
+        self.pack_start(self.apply_row, False, False, 0)
         self.cards = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
         self.pack_start(self.cards, False, False, 0)
-        buttons = Gtk.Box(spacing=8)
-        self.apply_button = Gtk.Button(label="Apply")
-        self.apply_button.get_style_context().add_class("suggested-action")
-        self.apply_button.connect("clicked", lambda _b: self.apply())
-        refresh = Gtk.Button(label="Detect displays")
-        refresh.connect("clicked", lambda _b: self.load())
-        buttons.pack_end(self.apply_button, False, False, 0)
-        buttons.pack_end(refresh, False, False, 0)
-        self.pack_start(buttons, False, False, 0)
+        self.pending = None
+        self.loading = False
+        # Plugging a monitor in or out shows up here right away.
+        display = Gdk.Display.get_default()
+        display.connect("monitor-added", lambda *_: GLib.timeout_add(1000, self.reload))
+        display.connect("monitor-removed", lambda *_: GLib.timeout_add(1000, self.reload))
         self.load()
 
+    def reload(self):
+        self.load()
+        return False
+
+    def schedule_apply(self):
+        """Settings apply as soon as you change them, like on Windows."""
+        if self.loading or self.pending:
+            return
+        self.pending = GLib.timeout_add(150, self.apply_now)
+
+    def apply_now(self):
+        self.pending = None
+        self.apply()
+        return False
+
     def load(self):
+        self.loading = True
+        self.apply_row.hide()
         for child in self.cards.get_children():
             child.destroy()
         self.outputs = {o["name"]: o for o in read_outputs()}
@@ -259,6 +287,7 @@ class Page(Gtk.Box):
             self.arrangement.queue_draw()
         else:
             self.arrangement.hide()
+        self.loading = False
 
     def card(self, name):
         output, state = self.outputs[name], self.states[name]
@@ -282,13 +311,10 @@ class Page(Gtk.Box):
         if len(self.outputs) > 1:
             switch = Gtk.Switch(active=state["enabled"], halign=Gtk.Align.START)
             switch.connect("notify::active", lambda s, _p: (state.update(enabled=s.get_active()),
-                                                            self.arrangement.queue_draw()))
+                                                            self.schedule_apply()))
             add("Use this display", switch)
-            main = Gtk.RadioButton.new_with_label_from_widget(self.main_group, "Taskbar and desktop icons go here")
-            self.main_group = self.main_group or main
-            main.set_active(name == self.main)
-            main.connect("toggled", lambda b: b.get_active() and (setattr(self, "main", name),
-                                                                  self.arrangement.queue_draw()))
+            main = Gtk.Switch(active=name == self.main, halign=Gtk.Align.START)
+            main.connect("notify::active", lambda s, _p: self.set_main(name, s))
             add("Main display", main)
 
         modes = output.get("modes", [])
@@ -315,11 +341,12 @@ class Page(Gtk.Box):
                 w, h = map(int, combo.get_active_id().split("x"))
                 state["mode"] = (w, h, state["mode"][2])
                 fill_rates()
-                self.arrangement.queue_draw()
+                self.schedule_apply()
 
         def on_rate(combo):
             if combo.get_active_id() and state["mode"]:
                 state["mode"] = state["mode"][:2] + (float(combo.get_active_id()),)
+                self.schedule_apply()
 
         if state["mode"]:
             res.set_active_id(f"{state['mode'][0]}x{state['mode'][1]}")
@@ -335,7 +362,7 @@ class Page(Gtk.Box):
             scale.append(repr(s), f"{round(s * 100)}%" + ("  (recommended)" if s == 1.0 else ""))
         scale.set_active_id(repr(state["scale"]))
         scale.connect("changed", lambda c: (state.update(scale=float(c.get_active_id())),
-                                            self.arrangement.queue_draw()))
+                                            self.schedule_apply()))
         add("Scale (text and app size)", scale)
 
         orient = Gtk.ComboBoxText()
@@ -345,7 +372,7 @@ class Page(Gtk.Box):
             orient.append(state["transform"], state["transform"])
             orient.set_active_id(state["transform"])
         orient.connect("changed", lambda c: (state.update(transform=c.get_active_id()),
-                                             self.arrangement.queue_draw()))
+                                             self.schedule_apply()))
         add("Orientation", orient)
 
         return frame
@@ -383,14 +410,29 @@ class Page(Gtk.Box):
             return
         if self.confirm_keep():
             self.save(after)
-            if self.main and self.main != read_main():
-                with open(MAIN_FILE, "w") as f:
-                    f.write(self.main + "\n")
-                # The taskbar and desktop restart on the main display a second later.
-                subprocess.run(["pkill", "-f", r"\.local/bin/skornex-bar( desktop)?$"])
         else:
             subprocess.run(command(before))
         self.load()
+
+    def set_main(self, name, switch):
+        if self.loading:
+            return
+        if not switch.get_active():  # there's always a main display: pick another one instead
+            if name == self.main:
+                self.loading = True
+                switch.set_active(True)
+                self.loading = False
+            return
+        self.main = name
+        os.makedirs(os.path.dirname(MAIN_FILE), exist_ok=True)
+        with open(MAIN_FILE, "w") as f:
+            f.write(name + "\n")
+        self.save({n: state_of(o) for n, o in self.outputs.items()})
+        # Games and other X11 apps open on the "primary" output.
+        subprocess.run(["xrandr", "--output", name, "--primary"], stderr=subprocess.DEVNULL)
+        # The taskbar and desktop restart on the main display a second later.
+        subprocess.run(["pkill", "-f", r"\.local/bin/skornex-bar( desktop)?$"])
+        GLib.idle_add(self.reload)
 
     def confirm_keep(self):
         dialog = Gtk.MessageDialog(transient_for=self.get_toplevel(), modal=True,
@@ -419,6 +461,10 @@ class Page(Gtk.Box):
         with open(SAVED, "w") as f:
             f.write("#!/bin/sh\n# Made by Display settings: your screen layout, applied at login.\n")
             f.write(" ".join(GLib.shell_quote(a) for a in command(states)) + "\n")
+            main = read_main()
+            if main:
+                # Games and other X11 apps open on the "primary" output.
+                f.write(f"xrandr --output {GLib.shell_quote(main)} --primary\n")
         os.chmod(SAVED, 0o755)
 
     def message(self, text):

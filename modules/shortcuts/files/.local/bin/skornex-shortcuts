@@ -52,7 +52,8 @@ COMMANDS = [  # (piece of the command, what to call it)
     ("skornex-screenshot full", "Screenshot: whole screen"),
     ("skornex-screenshot save", "Screenshot: save to Pictures"),
     ("skornex-labwc", "Reload SkorneX's window settings"), ("hyprlock", "Lock"),
-    ("5%+", "Volume up"), ("5%-", "Volume down"), ("set-mute", "Mute"), ("nemo", "Open Files"), ("kitty", "Open Terminal"),
+    ("skornex-volume up", "Volume up"), ("skornex-volume down", "Volume down"),
+    ("skornex-volume mute", "Mute"), ("5%+", "Volume up"), ("5%-", "Volume down"), ("set-mute", "Mute"), ("nemo", "Open Files"), ("kitty", "Open Terminal"),
 ]
 ACTIONS = {
     "Close": "Close window", "Kill": "Force-quit window", "Iconify": "Minimize window",

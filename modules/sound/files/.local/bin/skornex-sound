@@ -25,7 +25,8 @@ import tempfile
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gio, GLib, Gtk  # noqa: E402
+gi.require_version("Gdk", "3.0")
+from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
 TITLE = "Sound"
 ICON = "preferences-desktop-sound"
@@ -146,25 +147,24 @@ class Page(Gtk.Box):
         self.cap_switch = Gtk.Switch(active=self.state["cap"], valign=Gtk.Align.CENTER)
         cap_row.pack_start(self.cap_switch, False, False, 0)
         self.pack_start(cap_row, False, False, 0)
-        # The cap level, like OBS's limiter: nothing gets louder than this.
-        self.cap_level = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, -20, -1, 1)
-        self.cap_level.set_value(self.state["limit"])
-        self.cap_level.set_value_pos(Gtk.PositionType.RIGHT)
-        self.cap_level.connect("format-value", lambda _s, v: f"{v:.0f} dB")
-        self.cap_level.connect("value-changed", lambda *_: self.meter.queue_draw())
-        # Applied when you let go of the slider (it restarts the sound system).
-        self.cap_level.connect("button-release-event", lambda *_: self.cap_switch.get_active()
-                               and GLib.idle_add(self.apply_cap) and False)
-        self.pack_start(self.cap_level, False, False, 0)
+        # The cap level, like OBS's limiter: the white line on the meter
+        # below. Drag it; nothing you say gets past it.
+        self.cap_db = float(self.state["limit"])
         self.cap_note = Gtk.Label(xalign=0, wrap=True)  # only for problems
         self.cap_note.set_no_show_all(True)
         self.pack_start(self.cap_note, False, False, 0)
-        self.cap_switch.connect("notify::active", lambda *_: self.apply_cap())
+        self.cap_switch.connect("notify::active", lambda *_: (self.meter.queue_draw(), self.apply_cap()))
 
         test_row = Gtk.Box(spacing=10)
         test_row.pack_start(Gtk.Label(label="Test"), False, False, 0)
         self.meter = Gtk.DrawingArea()
-        self.meter.set_size_request(-1, 14)
+        self.meter.set_size_request(-1, 22)
+        self.meter.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK
+                              | Gdk.EventMask.BUTTON1_MOTION_MASK)
+        self.meter.connect("button-press-event", self.drag_cap)
+        self.meter.connect("motion-notify-event", self.drag_cap)
+        self.meter.connect("button-release-event", lambda *_: self.cap_switch.get_active()
+                           and GLib.idle_add(self.apply_cap) and False)
         self.meter.set_hexpand(True)
         self.meter.set_valign(Gtk.Align.CENTER)
         self.meter.connect("draw", self.draw_meter)
@@ -256,7 +256,7 @@ class Page(Gtk.Box):
 
     def apply_cap(self):
         self.state["cap"] = self.cap_switch.get_active()
-        self.state["limit"] = self.cap_level.get_value()
+        self.state["limit"] = self.cap_db
         if self.state["cap"]:
             self.state["mic"] = self.mic()
         save_state(self.state)
@@ -337,21 +337,36 @@ class Page(Gtk.Box):
         self.level = 0.0
         self.meter.queue_draw()
 
+    def drag_cap(self, widget, event):
+        """Moves the cap line (only while the cap is on)."""
+        if not self.cap_switch.get_active():
+            return False
+        db = event.x / max(1, widget.get_allocated_width()) * 60 - 60
+        self.cap_db = float(round(max(-20, min(-1, db))))
+        widget.queue_draw()
+        return True
+
     def draw_meter(self, widget, cr):
         """-60 dB on the left, 0 dB on the right; the line is the cap."""
         w, h = widget.get_allocated_width(), widget.get_allocated_height()
         cr.set_source_rgba(1, 1, 1, 0.08)
         cr.rectangle(0, 0, w, h)
         cr.fill()
-        cap = (self.cap_level.get_value() + 60) / 60
+        cap = (self.cap_db + 60) / 60
         loud = self.cap_switch.get_active() and self.level >= cap - 0.01
         cr.set_source_rgb(0.9, 0.6, 0.2) if loud else cr.set_source_rgb(0.3, 0.75, 0.45)
         cr.rectangle(0, 0, w * self.level, h)
         cr.fill()
         if self.cap_switch.get_active():
+            x = int(w * cap)
             cr.set_source_rgb(0.95, 0.95, 0.95)
-            cr.rectangle(int(w * cap), 0, 2, h)
+            cr.rectangle(x - 1, 0, 3, h)  # the line, with a grip you can drag
             cr.fill()
+            text = f"{self.cap_db:.0f} dB"
+            cr.set_font_size(11)
+            ext = cr.text_extents(text)
+            cr.move_to(min(x + 6, w - ext.width - 4), h / 2 + ext.height / 2)
+            cr.show_text(text)
         return False
 
     def record_test(self):
