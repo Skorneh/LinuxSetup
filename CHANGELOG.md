@@ -3,6 +3,9 @@
 What changed in each SkorneX version. Updates shows the installed version and
 the newest one; each version is also a release on GitHub.
 
+## 0.2.10
+- Each version is published as a release on GitHub, with these notes.
+
 ## 0.2.9
 - Desktop: drag a box to select several icons, Ctrl+click to add or remove one,
   and drag them all together.
