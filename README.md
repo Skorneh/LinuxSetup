@@ -146,6 +146,8 @@ you can check it works. Games will be slow without a real graphics card.
     in it.
   - **Right-click** for Pin/Unpin, Add to desktop, New window and Close.
   - **Drag** buttons left or right to reorder them.
+- **Battery** (laptops only, right after the ^): charge level, and a
+  charging icon when plugged in. Click it for the time left.
 - **^ (hidden icons):** tray icons from apps like Discord and Steam. Click one
   to open the app, right-click for its menu (Mute, Quit…).
 - **Network, volume, clock, power:** each opens a small panel in the

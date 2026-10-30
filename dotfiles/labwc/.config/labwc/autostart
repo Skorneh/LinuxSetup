@@ -30,10 +30,6 @@ keep_running skornex-bar
 keep_running skornex-desktop
 dunst >/dev/null 2>&1 &
 
-# Clipboard history for Win+V: everything you copy (text and pictures) is
-# kept, the last 50 items.
-wl-paste --type text --watch cliphist -max-items 50 store >/dev/null 2>&1 &
-wl-paste --type image --watch cliphist -max-items 50 store >/dev/null 2>&1 &
 
 # Settings modules put things to run at login here (Display: your screen
 # layout; Updates: the update reminder).

@@ -26,6 +26,7 @@ Pinned apps are in ~/.config/skornex/pins. Colors come from
 """
 
 import faulthandler
+import glob
 import json
 import os
 import re
@@ -70,6 +71,33 @@ ICON_POWER = ""
 # Wi-Fi signal: 1 to 4 bars, and a padlock for networks with a password.
 ICON_WIFI_BARS = ["\U000f091f", "\U000f0922", "\U000f0925", "\U000f0928"]
 ICON_LOCK = "\uf023"
+
+# Battery (laptops only): 10% steps, and the same while charging.
+ICON_BATTERY = ["\U000f007a", "\U000f007b", "\U000f007c", "\U000f007d", "\U000f007e",
+                "\U000f007f", "\U000f0080", "\U000f0081", "\U000f0082", "\U000f0079"]
+ICON_CHARGING = ["\U000f089c", "\U000f0086", "\U000f0087", "\U000f0088", "\U000f089d",
+                 "\U000f0089", "\U000f089e", "\U000f008a", "\U000f008b", "\U000f0085"]
+
+
+def find_battery():
+    """The laptop's battery in /sys, or None on a desktop PC."""
+    for path in sorted(glob.glob("/sys/class/power_supply/*")):
+        try:
+            with open(os.path.join(path, "type")) as f:
+                if f.read().strip() == "Battery" and os.path.exists(os.path.join(path, "capacity")):
+                    return path
+        except OSError:
+            pass
+    return None
+
+
+def read_sys(path, name):
+    try:
+        with open(os.path.join(path, name)) as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
 
 # Clipboard history: how many items Win+V shows, and the apps that paste with
 # Ctrl+Shift+V instead of Ctrl+V.
@@ -721,8 +749,15 @@ class Bar(Gtk.Window):
         self.vol_button = self.bar_button("", "volume")
         self.clock_button = self.bar_button("", "clock")
         self.power_button = self.bar_button(ICON_POWER, "power")
-        for b in (self.tray_button, self.net_button, self.vol_button, self.clock_button, self.power_button):
-            right.pack_start(b, False, False, 0)
+        # Battery, right after the hidden icons, only on a laptop.
+        self.battery = find_battery()
+        self.battery_button = self.bar_button("", "battery") if self.battery else None
+        self.flyout_buttons = {"tray": self.tray_button, "battery": self.battery_button,
+                               "network": self.net_button, "volume": self.vol_button,
+                               "clock": self.clock_button, "power": self.power_button}
+        for b in self.flyout_buttons.values():
+            if b:
+                right.pack_start(b, False, False, 0)
         self.vol_button.add_events(Gdk.EventMask.SCROLL_MASK)
         self.vol_button.connect("scroll-event", self.on_volume_scroll)
 
@@ -734,7 +769,8 @@ class Bar(Gtk.Window):
             "clock": Flyout(),
             "power": Flyout(),
             "run": Flyout("left", keyboard=True),
-            "clipboard": Flyout("left", keyboard=True),
+            "clipboard": Flyout(keyboard=True),
+            "battery": Flyout(),
         }
         for fly in self.flyouts.values():
             fly.connect("key-press-event", self.on_flyout_key)
@@ -754,6 +790,7 @@ class Bar(Gtk.Window):
 
         self.tick()
         GLib.timeout_add_seconds(1, self.tick)
+        self.start_clipboard_history()
         self.sync()
         self.show_all()
 
@@ -885,7 +922,48 @@ class Bar(Gtk.Window):
             self._slow_tick = now
             self.update_volume()
             self.update_network()
+            self.update_battery()
         return True
+
+    def battery_state(self):
+        """(percent, status, hours left or None). Status: Charging, Discharging, Full..."""
+        level = int(read_sys(self.battery, "capacity") or 0)
+        status = read_sys(self.battery, "status")
+        now = read_sys(self.battery, "energy_now") or read_sys(self.battery, "charge_now")
+        full = read_sys(self.battery, "energy_full") or read_sys(self.battery, "charge_full")
+        rate = read_sys(self.battery, "power_now") or read_sys(self.battery, "current_now")
+        hours = None
+        try:
+            now, full, rate = int(now), int(full), int(rate)
+            if rate > 0:
+                hours = (full - now) / rate if status == "Charging" else now / rate if status == "Discharging" else None
+        except ValueError:
+            pass
+        return level, status, hours
+
+    def update_battery(self):
+        if not self.battery_button:
+            return
+        level, status, _ = self.battery_state()
+        icons = ICON_CHARGING if status in ("Charging", "Full") else ICON_BATTERY
+        self.battery_button.text.set_width_chars(5)
+        self.battery_button.text.set_text(f"{icons[min(9, max(0, (level - 1) // 10))]} {level}%")
+
+    def fill_battery(self, fly):
+        fly.set_size_request(260, -1)
+        level, status, hours = self.battery_state()
+        fly.box.pack_start(label(f"Battery {level}%", "title"), False, False, 0)
+        text = {"Charging": "Charging", "Discharging": "On battery", "Full": "Fully charged",
+                "Not charging": "Plugged in, not charging"}.get(status, status)
+        if hours is not None and hours < 48:
+            h, m = int(hours), int(hours * 60) % 60
+            text += f" · {h} h {m:02d} min " + ("until full" if status == "Charging" else "left")
+        info = label(text, "status")
+        info.set_xalign(0)
+        fly.box.pack_start(info, False, False, 0)
+        bar = Gtk.ProgressBar()
+        bar.set_fraction(level / 100)
+        fly.box.pack_start(bar, False, False, 0)
 
     def volume(self):
         out = run("wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@")   # "Volume: 0.45 [MUTED]"
@@ -955,26 +1033,22 @@ class Bar(Gtk.Window):
             x, _ = self.tray_button.translate_coordinates(self, 0, 0)
             width = max(fly.get_preferred_width()[1], 1)
             fly.set_left(x + self.tray_button.get_allocated_width() // 2 - width // 2)
-        if name == "clipboard":
-            # In the middle of the screen, above the taskbar.
-            width = max(fly.get_preferred_width()[1], 1)
-            fly.set_left(self.get_allocated_width() // 2 - width // 2)
         self.catcher.show_all()
         fly.show_all()
         fly.present()
         self.open_flyout = name
-        for key, button in (("tray", self.tray_button), ("network", self.net_button),
-                            ("volume", self.vol_button), ("clock", self.clock_button),
-                            ("power", self.power_button), ("search", self.search_button)):
+        for key, button in list(self.flyout_buttons.items()) + [("search", self.search_button)]:
+            if not button:
+                continue
             ctx = button.get_style_context()
             (ctx.add_class if key == name else ctx.remove_class)("open")
 
     def close_flyout(self):
         if self.open_flyout:
             self.flyouts[self.open_flyout].hide()
-            for button in (self.tray_button, self.net_button, self.vol_button,
-                           self.clock_button, self.power_button, self.search_button):
-                button.get_style_context().remove_class("open")
+            for button in list(self.flyout_buttons.values()) + [self.search_button]:
+                if button:
+                    button.get_style_context().remove_class("open")
         self.open_flyout = None
         self.catcher.hide()
 
@@ -1274,6 +1348,15 @@ class Bar(Gtk.Window):
                           ("Shut down", ["systemctl", "poweroff"])):
             fly.box.pack_start(self.row_button(text, lambda c=cmd: (self.close_flyout(), spawn(*c))),
                                False, False, 0)
+
+    @staticmethod
+    def start_clipboard_history():
+        """Keeps everything you copy (text and pictures, the last 50) for Win+V.
+        Started here rather than at login, so it also starts after an update."""
+        for kind in ("text", "image"):
+            if run("pgrep", "-u", str(os.getuid()), "-f", f"wl-paste --type {kind} --watch cliphist").strip():
+                continue
+            spawn("wl-paste", "--type", kind, "--watch", "cliphist", "-max-items", "50", "store")
 
     # Clipboard history (Win+V), like Windows: the last things you copied
     # (cliphist keeps them). Click one, or pick it and press Enter, to paste it.

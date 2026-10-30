@@ -64,8 +64,8 @@ window.catcher { background-color: transparent; }
 
 /* The volume bar that pops up when you press the volume keys. */
 window.osd .flyout-box { padding: 10px 14px; }
-.osd progressbar trough { min-height: 6px; background-color: #${SURFACE}; border-radius: 3px; border: none; }
-.osd progressbar progress { min-height: 6px; background-color: #${ACCENT}; border-radius: 3px; border: none; }
+.flyout progressbar trough { min-height: 6px; background-color: #${SURFACE}; border-radius: 3px; border: none; }
+.flyout progressbar progress { min-height: 6px; background-color: #${ACCENT}; border-radius: 3px; border: none; }
 
 /* Clipboard history (Win+V). */
 .flyout list.clipboard { background: none; }
