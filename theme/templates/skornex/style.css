@@ -66,3 +66,11 @@ window.catcher { background-color: transparent; }
 window.osd .flyout-box { padding: 10px 14px; }
 .osd progressbar trough { min-height: 6px; background-color: #${SURFACE}; border-radius: 3px; border: none; }
 .osd progressbar progress { min-height: 6px; background-color: #${ACCENT}; border-radius: 3px; border: none; }
+
+/* Clipboard history (Win+V). */
+.flyout list.clipboard { background: none; }
+.flyout list.clipboard row { padding: 8px 10px; margin-bottom: 4px; border-radius: 6px;
+                             background-color: #${SURFACE}; color: #${TEXT}; }
+.flyout list.clipboard row:hover { background-color: #${BORDER}; }
+.flyout list.clipboard row:selected { background-color: #${BORDER}; box-shadow: inset 2px 0 #${ACCENT}; }
+.flyout list.clipboard button { padding: 0 4px; color: #${MUTED}; }

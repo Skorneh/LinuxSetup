@@ -71,6 +71,11 @@ ICON_POWER = ""
 ICON_WIFI_BARS = ["\U000f091f", "\U000f0922", "\U000f0925", "\U000f0928"]
 ICON_LOCK = "\uf023"
 
+# Clipboard history: how many items Win+V shows, and the apps that paste with
+# Ctrl+Shift+V instead of Ctrl+V.
+CLIP_ITEMS = 25
+TERMINALS = {"kitty", "foot", "alacritty", "org.wezfurlong.wezterm", "xterm", "org.gnome.console"}
+
 DOUBLE_CLICK = getattr(Gdk.EventType, "DOUBLE_BUTTON_PRESS", None) or getattr(Gdk.EventType, "_2BUTTON_PRESS")
 
 
@@ -729,6 +734,7 @@ class Bar(Gtk.Window):
             "clock": Flyout(),
             "power": Flyout(),
             "run": Flyout("left", keyboard=True),
+            "clipboard": Flyout("left", keyboard=True),
         }
         for fly in self.flyouts.values():
             fly.connect("key-press-event", self.on_flyout_key)
@@ -949,6 +955,10 @@ class Bar(Gtk.Window):
             x, _ = self.tray_button.translate_coordinates(self, 0, 0)
             width = max(fly.get_preferred_width()[1], 1)
             fly.set_left(x + self.tray_button.get_allocated_width() // 2 - width // 2)
+        if name == "clipboard":
+            # In the middle of the screen, above the taskbar.
+            width = max(fly.get_preferred_width()[1], 1)
+            fly.set_left(self.get_allocated_width() // 2 - width // 2)
         self.catcher.show_all()
         fly.show_all()
         fly.present()
@@ -1264,6 +1274,112 @@ class Bar(Gtk.Window):
                           ("Shut down", ["systemctl", "poweroff"])):
             fly.box.pack_start(self.row_button(text, lambda c=cmd: (self.close_flyout(), spawn(*c))),
                                False, False, 0)
+
+    # Clipboard history (Win+V), like Windows: the last things you copied
+    # (cliphist keeps them). Click one, or pick it and press Enter, to paste it.
+    def fill_clipboard(self, fly):
+        fly.set_size_request(400, -1)
+        active = self.screen.get_active_window()
+        self.paste_into = list(active.get_class_ids() or []) if active else []
+        head = Gtk.Box()
+        head.pack_start(label("Clipboard", "title"), False, False, 0)
+        entries = [line for line in run("cliphist", "list").splitlines() if "\t" in line][:CLIP_ITEMS]
+        if entries:
+            head.pack_end(self.row_button("Clear all", self.clear_clipboard), False, False, 0)
+        fly.box.pack_start(head, False, False, 0)
+        if not entries:
+            empty = label("Nothing copied yet. Things you copy show up here.", "empty")
+            empty.set_xalign(0)
+            fly.box.pack_start(empty, False, False, 4)
+            return
+        items = Gtk.ListBox()
+        items.get_style_context().add_class("clipboard")
+        for line in entries:
+            items.add(self.clip_row(line))
+        items.connect("row-activated", lambda _l, row: self.paste_clip(row.line))
+        items.connect("key-press-event", lambda l, e: e.keyval == Gdk.KEY_Delete and l.get_selected_row()
+                      and (self.delete_clip(l.get_selected_row().line), True)[1])
+        scroller = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
+        scroller.set_max_content_height(460)
+        scroller.set_propagate_natural_height(True)
+        scroller.add(items)
+        fly.box.pack_start(scroller, False, False, 0)
+        first = items.get_row_at_index(0)
+        items.select_row(first)
+        GLib.idle_add(first.grab_focus)
+
+    def clip_row(self, line):
+        row = Gtk.ListBoxRow()
+        row.line = line
+        box = Gtk.Box(spacing=8)
+        _id, _, preview = line.partition("\t")
+        picture = None
+        if preview.startswith("[[ binary data"):
+            picture = self.clip_picture(line)
+        if picture:
+            image = Gtk.Image.new_from_pixbuf(picture)
+            image.set_halign(Gtk.Align.START)
+            box.pack_start(image, True, True, 0)
+        else:
+            text = Gtk.Label(label=preview.strip(), xalign=0)
+            text.set_line_wrap(True)
+            text.set_lines(3)
+            text.set_ellipsize(Pango.EllipsizeMode.END)
+            text.set_max_width_chars(40)
+            box.pack_start(text, True, True, 0)
+        remove = Gtk.Button(label="✕")
+        remove.set_relief(Gtk.ReliefStyle.NONE)
+        remove.set_valign(Gtk.Align.START)
+        remove.set_tooltip_text("Remove")
+        remove.connect("clicked", lambda _b: self.delete_clip(line))
+        box.pack_end(remove, False, False, 0)
+        row.add(box)
+        return row
+
+    @staticmethod
+    def clip_picture(line):
+        try:
+            data = subprocess.run(["cliphist", "decode"], input=line.encode(), capture_output=True,
+                                  timeout=5).stdout
+            loader = GdkPixbuf.PixbufLoader()
+            loader.write(data)
+            loader.close()
+            pixbuf = loader.get_pixbuf()
+        except (OSError, subprocess.SubprocessError, GLib.Error):
+            return None
+        scale = min(320 / pixbuf.get_width(), 120 / pixbuf.get_height(), 1)
+        return pixbuf.scale_simple(max(1, int(pixbuf.get_width() * scale)),
+                                   max(1, int(pixbuf.get_height() * scale)), GdkPixbuf.InterpType.BILINEAR)
+
+    def paste_clip(self, line):
+        """Puts the item back on the clipboard and pastes it into the window
+        you were in (Ctrl+V, or Ctrl+Shift+V in a terminal)."""
+        try:
+            data = subprocess.run(["cliphist", "decode"], input=line.encode(), capture_output=True,
+                                  timeout=5).stdout
+            subprocess.run(["wl-copy"], input=data, timeout=5)
+        except (OSError, subprocess.SubprocessError):
+            return
+        self.close_flyout()
+        terminal = any(c.lower() in TERMINALS for c in self.paste_into)
+        keys = ["-M", "ctrl", "-M", "shift", "-k", "v", "-m", "shift", "-m", "ctrl"] if terminal \
+            else ["-M", "ctrl", "-k", "v", "-m", "ctrl"]
+        # A moment for the window you were in to get the keyboard back.
+        GLib.timeout_add(250, lambda: spawn("wtype", *keys) and False)
+
+    def delete_clip(self, line):
+        subprocess.run(["cliphist", "delete"], input=line.encode(), timeout=5)
+        self.refill_clipboard()
+
+    def clear_clipboard(self):
+        run("cliphist", "wipe")
+        self.refill_clipboard()
+
+    def refill_clipboard(self):
+        fly = self.flyouts["clipboard"]
+        fly.clear()
+        self.fill_clipboard(fly)
+        fly.show_all()
 
     # Run (Win+R), like Windows: type a command, press Enter.
     def fill_run(self, fly):
@@ -1720,7 +1836,7 @@ class SkorneXBar(Gtk.Application):
             return 0
         if self.bar is None:
             self.bar = Bar(self)
-        if args and args[0] in ("search", "power", "run"):
+        if args and args[0] in ("search", "power", "run", "clipboard"):
             self.bar.toggle(args[0])
         elif args[:1] == ["raise"] and len(args) >= 2:
             self.raise_soon(args[1], args[2] if len(args) > 2 else "")

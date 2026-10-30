@@ -47,7 +47,7 @@ CHOOSABLE_KEYS = ([chr(c) for c in range(ord("a"), ord("z") + 1)] + [str(d) for 
 
 COMMANDS = [  # (piece of the command, what to call it)
     ("skornex-bar search", "Open search"), ("skornex-bar run", "Run a command"),
-    ("skornex-bar power", "Power menu"), ("skornex-taskmgr", "Task Manager"),
+    ("skornex-bar power", "Power menu"), ("skornex-bar clipboard", "Clipboard history"), ("skornex-taskmgr", "Task Manager"),
     ("skornex-screenshot region", "Screenshot: drag a box"),
     ("skornex-screenshot full", "Screenshot: whole screen"),
     ("skornex-screenshot save", "Screenshot: save to Pictures"),

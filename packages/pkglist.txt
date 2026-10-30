@@ -48,6 +48,10 @@ wl-clipboard
 grim
 slurp
 
+# --- Clipboard history (Win+V) ---
+cliphist
+wtype
+
 # --- Look ---
 adw-gtk-theme
 papirus-icon-theme

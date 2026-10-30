@@ -199,6 +199,7 @@ already made.
 |---|---|
 | Win, or Ctrl+Space | Search apps and files |
 | Win+R | Run a command |
+| Win+V | Clipboard history: the last things you copied (text and pictures). Click one to paste it |
 | Win+E | Files |
 | Ctrl+Alt+T | Terminal |
 | Win+L | Lock |

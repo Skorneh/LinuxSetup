@@ -76,6 +76,10 @@
     <keybind key="W-r">
       <action name="Execute" command="~/.local/bin/skornex-bar run" />
     </keybind>
+    <!-- Win+V: clipboard history. -->
+    <keybind key="W-v">
+      <action name="Execute" command="~/.local/bin/skornex-bar clipboard" />
+    </keybind>
     <keybind key="W-e">
       <action name="Execute" command="nemo" />
     </keybind>

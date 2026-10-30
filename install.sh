@@ -38,9 +38,16 @@ if ((${#old_audio[@]})); then
     sudo pacman -Rdd --noconfirm "${old_audio[@]}"
 fi
 
-info "Updating system and installing base packages..."
 mapfile -t pkgs < <(read_list "$REPO_DIR/packages/pkglist.txt")
-sudo pacman -Syu --needed --noconfirm "${pkgs[@]}"
+# Updating SkorneX from the Updates module (SKORNEX_ONLY=1) leaves your other
+# apps alone: "Install updates" is for those. Only when SkorneX needs a new
+# package is a full update unavoidable (Arch doesn't support installing new
+# packages without updating the rest).
+mapfile -t missing < <(pacman -T "${pkgs[@]}" || true)
+if [[ -z "${SKORNEX_ONLY:-}" ]] || ((${#missing[@]})); then
+    info "Updating system and installing base packages..."
+    sudo pacman -Syu --needed --noconfirm "${pkgs[@]}"
+fi
 
 # --- 2. paru (AUR helper) ---
 # Built from source. The prebuilt paru-bin can lag behind pacman and then

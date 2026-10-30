@@ -14,7 +14,5 @@ jq
 man-db
 # Only needed to build paru; paru now removes build-only tools after building.
 rust
-# Clipboard history (Win+V) is off for now; it may come back later.
-cliphist
 drawing
 libdbusmenu-gtk3
