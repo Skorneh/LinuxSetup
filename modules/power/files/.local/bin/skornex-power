@@ -1,0 +1,234 @@
+#!/usr/bin/env python3
+"""SkorneX Power settings: when the screen locks, turns off and the PC goes
+to sleep, and what the power button and closing the lid do, like Windows'
+Power & sleep settings.
+
+    skornex-power     open it on its own (or search "Power settings")
+
+It's also a page in Settings (skornex-settings). Lock, screen and sleep
+times are saved in ~/.config/skornex/power and used by skornex-idle. The
+power button and the lid are set for the whole PC (systemd-logind), so
+changing them asks for your password.
+"""
+
+import os
+import subprocess
+import sys
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gio, GLib, Gtk  # noqa: E402
+
+TITLE = "Power"
+ICON = "preferences-system-power"
+APP_ID = "dev.skornex.Power"
+
+CONF = os.path.expanduser("~/.config/skornex/power")
+LOGIND = "/etc/systemd/logind.conf.d/90-skornex.conf"
+POWER_KEY_XML = os.path.expanduser("~/.config/skornex/labwc/power.xml")
+DEFAULTS = {"LOCK": "600", "SCREEN_OFF": "900", "SLEEP": "0", "LOCK_ON_SLEEP": "1"}
+
+MINUTES = [(60, "1 minute"), (120, "2 minutes"), (180, "3 minutes"), (300, "5 minutes"),
+           (600, "10 minutes"), (900, "15 minutes"), (1200, "20 minutes"), (1800, "30 minutes"),
+           (2700, "45 minutes"), (3600, "1 hour"), (7200, "2 hours"), (0, "Never")]
+POWER_BUTTON = [("menu", "Show the power menu"), ("suspend", "Sleep"),
+                ("poweroff", "Shut down"), ("ignore", "Do nothing")]
+LID = [("suspend", "Sleep"), ("lock", "Lock"), ("ignore", "Do nothing")]
+
+
+def read_conf():
+    values = dict(DEFAULTS)
+    try:
+        with open(CONF) as f:
+            for line in f:
+                if "=" in line and not line.startswith("#"):
+                    key, value = line.strip().split("=", 1)
+                    values[key] = value
+    except OSError:
+        pass
+    return values
+
+
+def write_conf(values):
+    os.makedirs(os.path.dirname(CONF), exist_ok=True)
+    with open(CONF, "w") as f:
+        f.write("# Made by Power settings (skornex-power). Seconds; 0 = never.\n")
+        for key in ("LOCK", "SCREEN_OFF", "SLEEP", "LOCK_ON_SLEEP"):
+            f.write(f"{key}={values[key]}\n")
+    # skornex-idle reads it when it starts; it stops the old one itself.
+    subprocess.Popen([os.path.expanduser("~/.local/bin/skornex-idle")], start_new_session=True,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def read_logind():
+    """(power button, lid) as set now; systemd's defaults if SkorneX never set them."""
+    button, lid = "poweroff", "suspend"
+    try:
+        with open(LOGIND) as f:
+            for line in f:
+                if line.startswith("HandlePowerKey="):
+                    button = line.strip().split("=", 1)[1]
+                elif line.startswith("HandleLidSwitch="):
+                    lid = line.strip().split("=", 1)[1]
+    except OSError:
+        pass
+    if button == "ignore" and os.path.exists(POWER_KEY_XML):
+        button = "menu"  # logind ignores the key and SkorneX shows the menu instead
+    return button, lid
+
+
+def has_battery():
+    """A laptop: only then is there a lid to ask about."""
+    root = "/sys/class/power_supply"
+    for name in (os.listdir(root) if os.path.isdir(root) else []):
+        try:
+            with open(os.path.join(root, name, "type")) as f:
+                if f.read().strip() == "Battery":
+                    return True
+        except OSError:
+            pass
+    return False
+
+
+def write_logind(button, lid):
+    """Asks for your password (polkit) and sets the power button and lid."""
+    key = "ignore" if button == "menu" else button
+    text = ("# Made by Power settings (skornex-power).\n[Login]\n"
+            f"HandlePowerKey={key}\nHandlePowerKeyLongPress=poweroff\n"
+            f"HandleLidSwitch={lid}\nHandleLidSwitchExternalPower={lid}\n")
+    script = (f"mkdir -p /etc/systemd/logind.conf.d && cat > {LOGIND} && "
+              "systemctl kill -s HUP systemd-logind")
+    done = subprocess.run(["pkexec", "sh", "-c", script], input=text, text=True).returncode == 0
+    if done:
+        # With "Show the power menu", the key reaches the desktop and opens it.
+        if button == "menu":
+            os.makedirs(os.path.dirname(POWER_KEY_XML), exist_ok=True)
+            with open(POWER_KEY_XML, "w") as f:
+                f.write('<?xml version="1.0"?>\n<!-- Made by Power settings (skornex-power). -->\n'
+                        '<labwc_config>\n  <keyboard>\n    <keybind key="XF86PowerOff">\n'
+                        '      <action name="Execute" command="~/.local/bin/skornex-bar power" />\n'
+                        '    </keybind>\n  </keyboard>\n</labwc_config>\n')
+        elif os.path.exists(POWER_KEY_XML):
+            os.remove(POWER_KEY_XML)
+        subprocess.run([os.path.expanduser("~/.local/bin/skornex-labwc")])
+    return done
+
+
+class Page(Gtk.Box):
+    def __init__(self):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        self.set_border_width(24)
+        self.values = read_conf()
+        self.button, self.lid = read_logind()
+        self.loading = True
+        title = Gtk.Label(xalign=0)
+        title.set_markup(f"<span size='x-large' weight='bold'>{TITLE}</span>")
+        self.pack_start(title, False, False, 0)
+
+        self.grid = Gtk.Grid(row_spacing=10, column_spacing=24)
+        self.pack_start(self.grid, False, False, 0)
+        self.row = 0
+        self.heading("When I'm away")
+        self.time_combo("Lock the screen after", "LOCK")
+        self.time_combo("Turn off the screen after", "SCREEN_OFF")
+        self.time_combo("Go to sleep after", "SLEEP")
+        lock = Gtk.Switch(active=self.values["LOCK_ON_SLEEP"] == "1", halign=Gtk.Align.START)
+        lock.connect("notify::active", lambda s, _p: self.set_value("LOCK_ON_SLEEP", "1" if s.get_active() else "0"))
+        self.add("Lock when the PC goes to sleep", lock)
+
+        self.heading("Buttons")
+        self.button_combo = self.choice("When I press the power button", POWER_BUTTON, self.button)
+        self.lid_combo = None
+        if has_battery():
+            self.lid_combo = self.choice("When I close the lid", LID, self.lid)
+        self.problem = Gtk.Label(xalign=0)
+        self.problem.set_no_show_all(True)
+        self.pack_start(self.problem, False, False, 0)
+        self.loading = False
+
+    def heading(self, text):
+        label = Gtk.Label(xalign=0)
+        label.set_markup(f"<b>{text}</b>")
+        label.set_margin_top(8)
+        self.grid.attach(label, 0, self.row, 2, 1)
+        self.row += 1
+
+    def add(self, text, widget):
+        self.grid.attach(Gtk.Label(label=text, xalign=0), 0, self.row, 1, 1)
+        widget.set_hexpand(True)
+        self.grid.attach(widget, 1, self.row, 1, 1)
+        self.row += 1
+
+    def time_combo(self, text, key):
+        combo = Gtk.ComboBoxText()
+        choices = list(MINUTES)
+        if not any(str(s) == self.values[key] for s, _ in choices):
+            choices.insert(0, (int(self.values[key]), f"{int(self.values[key]) // 60} minutes"))
+        for seconds, name in choices:
+            combo.append(str(seconds), name)
+        combo.set_active_id(self.values[key])
+        combo.connect("changed", lambda c: self.set_value(key, c.get_active_id()))
+        self.add(text, combo)
+
+    def choice(self, text, options, current):
+        combo = Gtk.ComboBoxText()
+        for value, name in options:
+            combo.append(value, name)
+        combo.set_active_id(current)
+        combo.connect("changed", lambda _c: GLib.idle_add(self.set_buttons))
+        self.add(text, combo)
+        return combo
+
+    def set_value(self, key, value):
+        if self.loading:
+            return
+        self.values[key] = value
+        write_conf(self.values)
+
+    def set_buttons(self):
+        button = self.button_combo.get_active_id()
+        lid = self.lid_combo.get_active_id() if self.lid_combo else self.lid
+        if (button, lid) == (self.button, self.lid):
+            return False
+        if write_logind(button, lid):
+            self.button, self.lid = button, lid
+            self.problem.hide()
+        else:  # cancelled: show what's really set
+            self.loading = True
+            self.button_combo.set_active_id(self.button)
+            if self.lid_combo:
+                self.lid_combo.set_active_id(self.lid)
+            self.loading = False
+            self.problem.set_text("Not changed (that needs your password).")
+            self.problem.show()
+        return False
+
+
+def main():
+    GLib.set_prgname(APP_ID)
+    app = Gtk.Application(application_id=APP_ID)
+
+    def activate(app):
+        if app.get_windows():
+            app.get_windows()[0].present()
+            return
+        Gtk.Settings.get_default().props.gtk_application_prefer_dark_theme = True
+        window = Gtk.ApplicationWindow(application=app, title=f"{TITLE} settings")
+        window.set_default_size(640, 480)
+        window.set_icon_name(ICON)
+        scroller = Gtk.ScrolledWindow()
+        scroller.add(Page())
+        window.add(scroller)
+        # Ctrl+W closes it, like most windows.
+        close = Gio.SimpleAction.new("close", None)
+        close.connect("activate", lambda *_: window.close())
+        window.add_action(close)
+        app.set_accels_for_action("win.close", ["<Ctrl>w"])
+        window.show_all()
+    app.connect("activate", activate)
+    sys.exit(app.run(sys.argv))
+
+
+if __name__ == "__main__":
+    main()

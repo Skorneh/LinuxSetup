@@ -42,7 +42,7 @@ def installed_modules():
         info = module_info(path)
         if info and info.get("program"):
             mods.append(info)
-    order = ["display", "sound", "mouse", "keyboard", "shortcuts", "personalize", "updates"]
+    order = ["display", "sound", "power", "mouse", "keyboard", "shortcuts", "personalize", "updates"]
     return sorted(mods, key=lambda m: (order.index(m["name"]) if m["name"] in order else 99, m["name"]))
 
 

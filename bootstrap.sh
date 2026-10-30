@@ -34,6 +34,7 @@ Settings modules. Each one is its own small app; pick only the ones you want
 (you can add or remove them later in Settings):
   display      Resolution, refresh rate, scale, monitor layout
   sound        Speakers, headphones, microphone, each app's volume
+  power        Lock, screen off and sleep times; power button and lid
   mouse        Pointer speed, scrolling, button swap, touchpad
   keyboard     Keyboard layouts (languages), key repeat, Num Lock
   shortcuts    Change, turn off or add keyboard shortcuts

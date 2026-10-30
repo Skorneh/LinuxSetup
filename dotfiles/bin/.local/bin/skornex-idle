@@ -1,0 +1,28 @@
+#!/bin/sh
+# skornex-idle: what happens when you leave the PC alone. Started at login;
+# the Power settings module restarts it after a change.
+#
+# Times are in ~/.config/skornex/power (seconds, 0 = never):
+#   LOCK=600          lock the screen
+#   SCREEN_OFF=900    turn the screen off (it comes back when you move the mouse)
+#   SLEEP=0           go to sleep
+#   LOCK_ON_SLEEP=1   lock the screen when the PC goes to sleep
+# Videos and games that ask the screen to stay on are respected.
+LOCK=600
+SCREEN_OFF=900
+SLEEP=0
+LOCK_ON_SLEEP=1
+conf="${XDG_CONFIG_HOME:-$HOME/.config}/skornex/power"
+# shellcheck source=/dev/null
+[ -f "$conf" ] && . "$conf"
+
+set -- -w
+[ "$LOCK" -gt 0 ] 2>/dev/null && set -- "$@" timeout "$LOCK" 'pidof hyprlock || hyprlock &'
+[ "$SCREEN_OFF" -gt 0 ] 2>/dev/null && set -- "$@" timeout "$SCREEN_OFF" 'wlopm --off \*' resume 'wlopm --on \*'
+[ "$SLEEP" -gt 0 ] 2>/dev/null && set -- "$@" timeout "$SLEEP" 'systemctl suspend'
+[ "$LOCK_ON_SLEEP" = 1 ] && set -- "$@" before-sleep 'pidof hyprlock || hyprlock &'
+# Lock when asked to (closing the lid can be set to lock, in Power settings).
+set -- "$@" lock 'pidof hyprlock || hyprlock &'
+
+pkill -u "$(id -u)" -x swayidle 2>/dev/null
+exec swayidle "$@"

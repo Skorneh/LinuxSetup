@@ -2027,14 +2027,20 @@ class Desktop(Gtk.Window):
         if event.button != 3:
             return False
         menu = Gtk.Menu()
-        for text, callback in (("New folder", lambda: self.new_item(event, folder=True)),
-                               ("New text document", lambda: self.new_item(event, folder=False)),
-                               (None, None),
-                               ("Settings", lambda: spawn("skornex-settings"))):
+        for icon, text, callback in (("folder-new", "New folder", lambda: self.new_item(event, folder=True)),
+                                     ("document-new", "New text document",
+                                      lambda: self.new_item(event, folder=False)),
+                                     (None, None, None),
+                                     ("preferences-system", "Settings", lambda: spawn("skornex-settings"))):
             if text is None:
                 menu.append(Gtk.SeparatorMenuItem())
                 continue
-            item = Gtk.MenuItem(label=text)
+            # An icon on the left of each item, like Windows.
+            item = Gtk.MenuItem()
+            row = Gtk.Box(spacing=10)
+            row.pack_start(Gtk.Image.new_from_icon_name(icon, Gtk.IconSize.MENU), False, False, 0)
+            row.pack_start(Gtk.Label(label=text, xalign=0), True, True, 0)
+            item.add(row)
             item.connect("activate", lambda _i, c=callback: after_menu(c))
             menu.append(item)
         menu.show_all()

@@ -3,6 +3,11 @@
 What changed in each SkorneX version. Updates shows the installed version and
 the newest one; each version is also a release on GitHub.
 
+## 0.3.0
+- Power settings module: lock, screen off and sleep times, lock on sleep,
+  the power button and (on laptops) the lid.
+- Icons in the desktop right-click menu.
+
 ## 0.2.10
 - Each version is published as a release on GitHub, with these notes.
 

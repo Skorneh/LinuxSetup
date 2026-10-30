@@ -39,12 +39,9 @@ for script in ~/.config/skornex/autostart.d/*; do
 done
 /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 >/dev/null 2>&1 &
 
-# Lock after 10 minutes idle, monitor off after 15. Videos and games that
-# ask the screen to stay on are respected.
-swayidle -w \
-    timeout 600 'pidof hyprlock || hyprlock &' \
-    timeout 900 'wlopm --off \*' resume 'wlopm --on \*' \
-    >/dev/null 2>&1 &
+# Lock after 10 minutes idle, screen off after 15 (change them in the Power
+# settings module, or in ~/.config/skornex/power).
+~/.local/bin/skornex-idle >/dev/null 2>&1 &
 
 # SkorneX's defaults, applied once (skornex-once): after that, whatever you
 # change in these stays changed, through restarts and updates.
