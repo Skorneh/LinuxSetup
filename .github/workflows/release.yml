@@ -1,0 +1,25 @@
+# Pushing a version tag (v0.2.9...) publishes a GitHub release, with that
+# version's notes from CHANGELOG.md. Marked as a pre-release while SkorneX is
+# in alpha (0.x).
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Notes from CHANGELOG.md
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          awk -v v="$v" '/^## /{p = ($2 == v); next} p' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "SkorneX $v" > notes.md
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --title "SkorneX ${GITHUB_REF_NAME#v}" \
+            --notes-file notes.md --prerelease
