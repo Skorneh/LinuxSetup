@@ -24,3 +24,7 @@ alias update='paru -Syu'
 alias cleanup='pacman -Qdtq | sudo pacman -Rns -'
 # Show installed packages that aren't in the repo's package lists yet.
 alias pkgcheck='~/LinuxSetup/scripts/check-packages.sh'
+
+# Your own additions (aliases, PATH...) go in ~/.bashrc.local, which updates
+# never touch.
+[ -f ~/.bashrc.local ] && . ~/.bashrc.local

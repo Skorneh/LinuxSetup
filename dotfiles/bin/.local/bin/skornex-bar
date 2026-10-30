@@ -304,7 +304,9 @@ def read_pins():
 
 def write_pins(pins):
     os.makedirs(CONFIG, exist_ok=True)
-    with open(PINS_FILE, "w") as f:  # follows the link into the repo
+    if os.path.islink(PINS_FILE):  # older SkorneX linked it into the repo; make it yours
+        os.unlink(PINS_FILE)
+    with open(PINS_FILE, "w") as f:
         f.write("# Apps pinned to the taskbar, left to right. One app ID per line\n"
                 "# (the .desktop file name). Right-click a taskbar button to pin or unpin.\n")
         f.writelines(p + "\n" for p in pins)

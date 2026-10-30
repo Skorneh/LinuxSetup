@@ -1,0 +1,5 @@
+# Not linked into your home folder. ~/.config/skornex/pins is your own copy
+# (install.sh makes it from this one), so pinning apps never changes SkorneX's
+# files and updates never change your pins.
+^/\.config/skornex/pins$
+^/\.stow-local-ignore$

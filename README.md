@@ -231,7 +231,7 @@ in Firefox and Files.
 | Command | Does |
 |---|---|
 | `update` | Updates all apps and the system (`paru -Syu`). Do this every week or two. |
-| `cd ~/LinuxSetup && git pull && ./install.sh` | Gets the latest SkorneX. |
+| Updates > Update SkorneX, or `cd ~/LinuxSetup && git pull --autostash && ./install.sh` | Gets the latest SkorneX. Your settings stay as you set them (see [Your changes are kept](#your-changes-are-kept)). |
 | `pkgcheck` | Lists apps you installed yourself that SkorneX doesn't know about. |
 
 Install more apps with `sudo pacman -S <name>` (official repos) or
@@ -253,13 +253,32 @@ search right away.
   changes in `~/.config/skornex/labwc/*.xml` (a file there only needs the
   parts it changes). Edit one of those, never `rc.xml`, then
   run `skornex-labwc` in Terminal to rebuild and reload.
-- **Startup apps:** `~/.config/labwc/autostart`.
+- **Startup apps:** put a script in `~/.config/skornex/autostart.d/` (make it
+  executable); it runs every time you log in.
+- **Terminal:** your own settings in `~/.config/kitty/local.conf`, your own
+  aliases in `~/.bashrc.local`.
 
-Most of your settings are links into `~/LinuxSetup/dotfiles`, so editing them
-edits your copy of SkorneX. If `git pull` complains about your changes later,
-run `git -C ~/LinuxSetup stash` first, or fork the repo and use your fork.
-Files made from `theme/templates/` get rewritten by `skornex-theme`: edit the
-template instead.
+### Your changes are kept
+
+Updating SkorneX never undoes what you set:
+
+- **Settings modules** (Display, Sound, Mouse, Keyboard, Shortcuts,
+  Personalize, Updates) save in their own files in `~/.config/skornex/`.
+- **Pinned apps, colors, wallpaper and window settings** are your own files
+  (`pins`, `colors.user`, `wallpaper`, `labwc/*.xml`), separate from
+  SkorneX's.
+- **SkorneX's defaults** (dark theme, icon theme, Notepad's look, default
+  apps, Files' sidebar) are applied once, on the first login. Change any of
+  them and it stays changed. The list of what's been applied is
+  `~/.local/share/skornex/once`; delete a line to get that default back at
+  the next login or update.
+- **Packages SkorneX stopped using** are removed once. Install one again
+  yourself and it stays.
+- **If you edited SkorneX's own files** in `~/LinuxSetup`, updating sets your
+  edits aside, updates, and puts them back. If an update changed the same
+  lines, your version is kept in `git stash` (`git -C ~/LinuxSetup stash list`).
+  Files made from `theme/templates/` get rewritten by `skornex-theme`: edit
+  the template instead.
 
 ## Troubleshooting
 

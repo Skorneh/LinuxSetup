@@ -1,0 +1,16 @@
+#!/bin/sh
+# skornex-once NAME COMMAND...: run COMMAND only the first time.
+#
+# SkorneX's defaults (dark theme, default apps, Files' sidebar...) are set
+# through this, so they're applied once on a new install and anything you
+# change afterwards stays, through updates and restarts. What has been
+# applied is listed in ~/.local/share/skornex/once; delete a line to have
+# that default applied again.
+done_file="${XDG_DATA_HOME:-$HOME/.local/share}/skornex/once"
+name=$1
+shift
+grep -qxF "$name" "$done_file" 2>/dev/null && exit 0
+if "$@"; then
+    mkdir -p "$(dirname "$done_file")"
+    echo "$name" >> "$done_file"
+fi

@@ -72,12 +72,18 @@ if ((${#aur[@]})); then
 fi
 
 # --- 3b. Packages SkorneX no longer uses ---
+# Each one is removed once. If you install one of them again yourself, it
+# stays (the list of what's been done is ~/.local/share/skornex/once).
+once_file="$HOME/.local/share/skornex/once"
+mkdir -p "$(dirname "$once_file")"
 mapfile -t old < <(read_list "$REPO_DIR/packages/removelist.txt")
 for pkg in "${old[@]}"; do
+    grep -qxF "remove:$pkg" "$once_file" 2>/dev/null && continue
     if pacman -Qq "$pkg" &>/dev/null; then
         info "Removing $pkg (no longer used)..."
         sudo pacman -Rns --noconfirm "$pkg" || warn "Couldn't remove $pkg; something else still needs it."
     fi
+    echo "remove:$pkg" >> "$once_file"
 done
 
 # --- 4. Dotfiles ---
@@ -89,6 +95,7 @@ for pkg_dir in "$REPO_DIR"/dotfiles/*/; do
     pkg="$(basename "$pkg_dir")"
     while IFS= read -r -d '' file; do
         rel="${file#"$pkg_dir"}"
+        [[ "$rel" == .config/skornex/pins || "$rel" == .stow-local-ignore ]] && continue  # yours, see below
         target="$HOME/$rel"
         if [[ -e "$target" && ! -L "$target" ]]; then
             mkdir -p "$backup/$(dirname "$rel")"
@@ -98,6 +105,17 @@ for pkg_dir in "$REPO_DIR"/dotfiles/*/; do
     done < <(find "$pkg_dir" -type f -print0)
     stow --dir="$REPO_DIR/dotfiles" --target="$HOME" --no-folding --restow "$pkg"
 done
+# Your taskbar pins are your own file. Older SkorneX versions linked it into
+# the repo; turn that into a real file (keeping your pins) and put the repo's
+# copy back to the default, so updates can't clash with it.
+pins="$HOME/.config/skornex/pins"
+default_pins="$REPO_DIR/dotfiles/skornex/.config/skornex/pins"
+if [[ -L "$pins" ]]; then
+    cp --remove-destination "$(readlink -f "$pins")" "$pins"
+    git -C "$REPO_DIR" checkout -- dotfiles/skornex/.config/skornex/pins 2>/dev/null || true
+elif [[ ! -e "$pins" ]]; then
+    cp "$default_pins" "$pins"
+fi
 # Remove links left behind by files that were deleted from the repo.
 find "$HOME/.config" "$HOME/.local" -xtype l \( -lname '*LinuxSetup/dotfiles/*' -o -lname '*LinuxSetup/modules/*' \) \
     -delete 2>/dev/null || true
@@ -160,15 +178,15 @@ user = "greeter"
 EOF
 
 # --- 6b. Default apps ---
+# Set once (skornex-once): if you pick other default apps later, they stay.
 # Notepad (Mousepad) opens notes and other text files. Scripts (.sh) keep
 # their normal behavior; an earlier SkorneX version sent them to Notepad too.
-xdg-mime default org.xfce.mousepad.desktop text/plain text/markdown text/x-markdown \
-    application/json text/x-log
+"$HOME/.local/bin/skornex-once" default-notepad xdg-mime default org.xfce.mousepad.desktop \
+    text/plain text/markdown text/x-markdown application/json text/x-log
 # Folders open in Files (kitty's "open folder in terminal" entry claims them
 # otherwise).
-xdg-mime default nemo.desktop inode/directory
-# Your home folders (Documents, Downloads, Pictures...) and Files' sidebar.
-"$HOME/.local/bin/skornex-folders"
+"$HOME/.local/bin/skornex-once" default-folders xdg-mime default nemo.desktop inode/directory
+# (Your home folders and Files' sidebar are set up at login: skornex-folders.)
 sed -i '/^\(application\|text\)\/x-shellscript=org.xfce.mousepad.desktop/d' "$HOME/.config/mimeapps.list" 2>/dev/null || true
 
 # --- 7. Firefox debloat ---

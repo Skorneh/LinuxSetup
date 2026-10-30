@@ -46,7 +46,7 @@ EOF
 
     sudo pacman -S --needed --noconfirm git </dev/tty
     if [[ -d "$dir/.git" ]]; then
-        git -C "$dir" pull --ff-only </dev/tty
+        git -C "$dir" pull --ff-only --autostash </dev/tty
     else
         git clone "$repo" "$dir" </dev/tty
     fi

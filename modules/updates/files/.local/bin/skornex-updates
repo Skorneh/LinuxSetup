@@ -128,7 +128,7 @@ class Page(Gtk.Box):
             "paru -Syu", "Updating apps and system. Type your password when asked."))
         self.skornex = Gtk.Button(label="Update SkorneX")
         self.skornex.connect("clicked", lambda _b: self.terminal(
-            f"cd {GLib.shell_quote(REPO)} && git pull --ff-only && SKORNEX_ONLY=1 ./install.sh",
+            f"cd {GLib.shell_quote(REPO)} && git pull --ff-only --autostash && SKORNEX_ONLY=1 ./install.sh",
             "Updating SkorneX."))
         check = Gtk.Button(label="Check again")
         check.connect("clicked", lambda _b: self.check())
