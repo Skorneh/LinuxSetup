@@ -167,24 +167,8 @@ xdg-mime default org.xfce.mousepad.desktop text/plain text/markdown text/x-markd
 # Folders open in Files (kitty's "open folder in terminal" entry claims them
 # otherwise).
 xdg-mime default nemo.desktop inode/directory
-# The usual folders in your home folder: Desktop, Documents, Downloads, Music,
-# Pictures, Videos... (Files shows them in its sidebar).
-xdg-user-dirs-update
-# Documents, Downloads, Pictures, Music and Videos in Files' sidebar: they're
-# the first five bookmarks, and autostart tells Files to show its first five
-# bookmarks under "My Computer". Your own bookmarks stay, below them.
-bookmarks="$HOME/.config/gtk-3.0/bookmarks"
-mkdir -p "$(dirname "$bookmarks")"
-touch "$bookmarks"
-mine=$(grep -v -E "^file://($(for d in DOCUMENTS DOWNLOAD PICTURES MUSIC VIDEOS; do
-    printf '%s|' "$(xdg-user-dir "$d")"; done | sed 's/|$//'))( |$)" "$bookmarks" || true)
-{
-    for d in DOCUMENTS DOWNLOAD PICTURES MUSIC VIDEOS; do
-        dir="$(xdg-user-dir "$d")"
-        [[ -d "$dir" && "$dir" != "$HOME" ]] && echo "file://$dir"
-    done
-    [[ -n "$mine" ]] && echo "$mine"
-} > "$bookmarks.new" && mv "$bookmarks.new" "$bookmarks"
+# Your home folders (Documents, Downloads, Pictures...) and Files' sidebar.
+"$HOME/.local/bin/skornex-folders"
 sed -i '/^\(application\|text\)\/x-shellscript=org.xfce.mousepad.desktop/d' "$HOME/.config/mimeapps.list" 2>/dev/null || true
 
 # --- 7. Firefox debloat ---

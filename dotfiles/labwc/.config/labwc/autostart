@@ -61,5 +61,6 @@ gsettings set org.xfce.mousepad.preferences.view highlight-current-line true
 # open them). Undoes an earlier SkorneX setting on machines that had it.
 gsettings reset org.nemo.preferences executable-text-activation
 # Files: Documents, Downloads, Pictures, Music and Videos (the first five
-# bookmarks, set up by install.sh) under "My Computer" in the sidebar.
+# bookmarks, set up by skornex-folders) under "My Computer" in the sidebar.
+~/.local/bin/skornex-folders >/dev/null 2>&1
 gsettings set org.nemo.window-state sidebar-bookmark-breakpoint 5

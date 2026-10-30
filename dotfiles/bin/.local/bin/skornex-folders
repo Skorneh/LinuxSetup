@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# skornex-folders: your home folders and Files' sidebar. Runs at login (before
+# Files can be open, since Files rewrites its bookmarks from memory) and from
+# install.sh.
+#   - Makes Desktop, Documents, Downloads, Music, Pictures and Videos.
+#   - Skips Public, Templates and Projects (removed if empty).
+#   - Puts Documents, Downloads, Pictures, Music and Videos first in the
+#     bookmarks; Files shows the first five under "My Computer". Your own
+#     bookmarks stay, below them.
+set -euo pipefail
+
+xdg-user-dirs-update
+for name in PUBLICSHARE TEMPLATES PROJECTS; do
+    dir="$(xdg-user-dir "$name" 2>/dev/null || true)"
+    if [[ -n "$dir" && "$dir" != "$HOME" ]]; then
+        # Pointing it at your home folder is how xdg-user-dirs turns one off.
+        xdg-user-dirs-update --set "$name" "$HOME" 2>/dev/null || true
+        rmdir "$dir" 2>/dev/null || true
+    fi
+done
+
+bookmarks="${XDG_CONFIG_HOME:-$HOME/.config}/gtk-3.0/bookmarks"
+mkdir -p "$(dirname "$bookmarks")"
+touch "$bookmarks"
+ours=()
+for name in DOCUMENTS DOWNLOAD PICTURES MUSIC VIDEOS; do
+    dir="$(xdg-user-dir "$name")"
+    [[ -d "$dir" && "$dir" != "$HOME" ]] && ours+=("file://$dir")
+done
+{
+    printf '%s\n' "${ours[@]}"
+    while IFS= read -r line; do
+        url="${line%% *}"
+        [[ -n "$url" && " ${ours[*]} " != *" $url "* ]] && printf '%s\n' "$line"
+    done < "$bookmarks"
+} > "$bookmarks.new"
+mv "$bookmarks.new" "$bookmarks"
