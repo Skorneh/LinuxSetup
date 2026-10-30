@@ -1620,7 +1620,12 @@ class DesktopIcon(Gtk.EventBox):
         self.image.set_pixel_size(48)
 
     def on_press(self, _w, event):
-        self.desktop.select(self)
+        ctrl = event.state & Gdk.ModifierType.CONTROL_MASK
+        if ctrl and event.button == 1:
+            self.desktop.toggle_select(self)  # Ctrl+click adds or removes, like Windows
+            return True
+        if self not in self.desktop.selection:
+            self.desktop.select(self)
         if event.type == DOUBLE_CLICK and event.button == 1:
             self.grab = None
             self.open_it()
@@ -1629,7 +1634,11 @@ class DesktopIcon(Gtk.EventBox):
             self.dragging = False
         elif event.button == 3:
             menu = Gtk.Menu()
-            for text, callback in self.menu_items:
+            items = self.menu_items
+            files = [i for i in self.desktop.selection if i.path]
+            if len(self.desktop.selection) > 1:
+                items = [(f"Delete {len(files)} items", self.desktop.trash_selection)] if files else []
+            for text, callback in items:
                 item = Gtk.MenuItem(label=text)
                 item.connect("activate", lambda _i, c=callback: after_menu(c))
                 menu.append(item)
@@ -1650,14 +1659,16 @@ class DesktopIcon(Gtk.EventBox):
             self.get_style_context().add_class("dragging")
         if self.dragging:
             x, y = self.pointer(event)
-            self.desktop.fixed.move(self, max(0, x - int(self.grab[0])), max(0, y - int(self.grab[1])))
+            self.desktop.drag_to(self, x - int(self.grab[0]), y - int(self.grab[1]),
+                                 x - self.grab[0] + CELL_W / 2, y - self.grab[1] + CELL_H / 2)
         return True
 
     def on_release(self, _w, event):
         if self.dragging:
             x, y = self.pointer(event)
-            self.get_style_context().remove_class("dragging")
             self.desktop.drop(self, x - self.grab[0] + CELL_W / 2, y - self.grab[1] + CELL_H / 2)
+        elif self.grab is not None and len(self.desktop.selection) > 1:
+            self.desktop.select(self)  # a plain click on one of several: just that one
         self.grab = None
         self.dragging = False
         return True
@@ -1759,20 +1770,25 @@ class Desktop(Gtk.Window):
         # Clicking empty desktop clears the selection.
         background = Gtk.EventBox()
         background.set_visible_window(False)
+        background.add_events(Gdk.EventMask.BUTTON_RELEASE_MASK | Gdk.EventMask.POINTER_MOTION_MASK)
         background.connect("button-press-event", self.on_background_press)
+        background.connect("motion-notify-event", self.on_band_motion)
+        background.connect("button-release-event", self.on_band_release)
+        self.band = None  # (x0, y0, x1, y1) while drag-selecting
         self.fixed = Gtk.Fixed()
         background.add(self.fixed)
         self.add(background)
         # The wallpaper is painted under the icons; other monitors get a backdrop.
         self.wallpaper = Wallpaper()
         self.wallpaper.attach(self.fixed)
+        self.fixed.connect_after("draw", self.draw_band)  # over the icons
         display = Gdk.Display.get_default()
         self.backdrops = [Backdrop(app, m, self.wallpaper)
                           for m in (display.get_monitor(i) for i in range(display.get_n_monitors()))
                           if m != main_monitor()]
 
         self.icons = {}
-        self.selected = None
+        self.selection = []
         self.positions = self.load_positions()
         self.trash = DesktopIcon(self, "::trash", "Recycle Bin", "user-trash",
                                  lambda: spawn("nemo", "trash:///"),
@@ -1850,26 +1866,125 @@ class Desktop(Gtk.Window):
             self.positions = {k: v for k, v in taken.items()}
             self.save_positions()
 
-    def drop(self, icon, x, y):
-        """An icon was dragged here: snap to the nearest grid spot. If another
-        icon is there, they swap places."""
+    def cell_at(self, x, y):
         cols, rows = self.grid_size()
-        col = min(cols - 1, max(0, int((x - GRID_MARGIN) // CELL_W)))
-        row = min(rows - 1, max(0, int((y - GRID_MARGIN) // CELL_H)))
+        return (min(cols - 1, max(0, int((x - GRID_MARGIN) // CELL_W))),
+                min(rows - 1, max(0, int((y - GRID_MARGIN) // CELL_H))))
+
+    def over_trash(self, icon, x, y):
+        """True when dropping here would put files in the Recycle Bin. Never
+        for the Recycle Bin itself, which just moves."""
+        dragged = self.selection if icon in self.selection else [icon]
+        return self.trash not in dragged and self.cell_at(x, y) == self.positions.get(self.trash.key)
+
+    def drag_to(self, icon, left, top, x, y):
+        """Moves the dragged icons with the mouse (all selected ones together)."""
+        old = self.fixed.child_get_property(icon, "x"), self.fixed.child_get_property(icon, "y")
+        dx, dy = max(0, left) - old[0], max(0, top) - old[1]
+        for i in (self.selection if icon in self.selection else [icon]):
+            i.get_style_context().add_class("dragging")
+            self.fixed.move(i, max(0, self.fixed.child_get_property(i, "x") + dx),
+                            max(0, self.fixed.child_get_property(i, "y") + dy))
+        ctx = self.trash.get_style_context()
+        (ctx.add_class if self.over_trash(icon, x, y) else ctx.remove_class)("drop-target")
+
+    def drop(self, icon, x, y):
+        """Icons were dragged here. On the Recycle Bin: they're deleted (to the
+        Recycle Bin). Otherwise they snap to the grid, keeping their places
+        relative to each other; one icon swaps with whatever is there."""
+        dragged = self.selection if icon in self.selection else [icon]
+        for i in dragged:
+            i.get_style_context().remove_class("dragging")
+        self.trash.get_style_context().remove_class("drop-target")
+        if self.over_trash(icon, x, y):
+            self.layout()  # back in place until the files are gone
+            for i in dragged:
+                if i.path:
+                    self.remove_file(Gio.File.new_for_path(i.path))
+            self.select(None)
+            return
+        col, row = self.cell_at(x, y)
         old = self.positions.get(icon.key)
-        for key, pos in self.positions.items():
-            if pos == (col, row) and key != icon.key and old:
-                self.positions[key] = old
-        self.positions[icon.key] = (col, row)
+        if len(dragged) == 1:
+            for key, pos in self.positions.items():
+                if pos == (col, row) and key != icon.key and old:
+                    self.positions[key] = old
+            self.positions[icon.key] = (col, row)
+        else:
+            cols, rows = self.grid_size()
+            dc, dr = (col - old[0], row - old[1]) if old else (0, 0)
+            moving = {i.key for i in dragged}
+            taken = {pos for key, pos in self.positions.items() if key not in moving}
+            for i in dragged:
+                c, r = self.positions.get(i.key, (0, 0))
+                spot = (min(cols - 1, max(0, c + dc)), min(rows - 1, max(0, r + dr)))
+                if spot in taken:
+                    spot = self.free_cell(taken)
+                self.positions[i.key] = spot
+                taken.add(spot)
         self.save_positions()
         self.layout()
 
     def select(self, icon):
-        if self.selected and self.selected is not icon:
-            self.selected.get_style_context().remove_class("selected")
-        self.selected = icon
-        if icon:
-            icon.get_style_context().add_class("selected")
+        """Selects just this icon (None: nothing)."""
+        self.set_selection([icon] if icon else [])
+        return False
+
+    def toggle_select(self, icon):
+        self.set_selection([i for i in self.selection if i is not icon] if icon in self.selection
+                           else self.selection + [icon])
+
+    def set_selection(self, icons):
+        for i in self.selection:
+            if i not in icons:
+                i.get_style_context().remove_class("selected")
+        for i in icons:
+            i.get_style_context().add_class("selected")
+        self.selection = list(icons)
+
+    def trash_selection(self):
+        for i in list(self.selection):
+            if i.path:
+                self.remove_file(Gio.File.new_for_path(i.path))
+        self.select(None)
+
+    # --- Drag-select: a box on the empty desktop selects what it touches ---
+
+    def on_band_motion(self, _w, event):
+        if not self.band:
+            return False
+        x0, y0 = self.band[:2]
+        self.band = (x0, y0, event.x, event.y)
+        left, right = sorted((x0, event.x))
+        top, bottom = sorted((y0, event.y))
+        hit = []
+        for icon in self.icons.values():
+            # Where the icon was placed (its allocation can lag behind a move).
+            x, y = self.fixed.child_get_property(icon, "x"), self.fixed.child_get_property(icon, "y")
+            if x < right and left < x + CELL_W - 8 and y < bottom and top < y + CELL_H - 12:
+                hit.append(icon)
+        self.set_selection(self.band_base + [i for i in hit if i not in self.band_base])
+        self.fixed.queue_draw()
+        return True
+
+    def on_band_release(self, _w, _event):
+        if self.band:
+            self.band = None
+            self.fixed.queue_draw()
+        return False
+
+    def draw_band(self, _w, cr):
+        if not self.band or self.band[2] is None:
+            return False
+        x0, y0, x1, y1 = self.band
+        color = self.get_style_context().lookup_color("theme_selected_bg_color")
+        rgba = color[1] if color[0] else Gdk.RGBA(0.6, 0.6, 0.65, 1)
+        cr.rectangle(min(x0, x1) + 0.5, min(y0, y1) + 0.5, abs(x1 - x0), abs(y1 - y0))
+        cr.set_source_rgba(rgba.red, rgba.green, rgba.blue, 0.2)
+        cr.fill_preserve()
+        cr.set_source_rgba(rgba.red, rgba.green, rgba.blue, 0.8)
+        cr.set_line_width(1)
+        cr.stroke()
         return False
 
     # --- What's on the desktop ---
@@ -1884,11 +1999,15 @@ class Desktop(Gtk.Window):
             wanted[name] = os.path.join(DESKTOP_DIR, name)
         for key in list(self.icons):
             if key not in wanted:
-                self.fixed.remove(self.icons.pop(key))
+                gone = self.icons.pop(key)
+                if gone in self.selection:
+                    self.selection.remove(gone)
+                self.fixed.remove(gone)
                 self.positions.pop(key, None)
         for key, path in wanted.items():
             if key not in self.icons:
                 icon = self.trash if key == "::trash" else self.make_icon(key, path)
+                icon.path = path  # None for the Recycle Bin
                 self.icons[key] = icon
                 self.fixed.put(icon, 0, 0)
         self.fixed.show_all()
@@ -1897,8 +2016,14 @@ class Desktop(Gtk.Window):
 
     def on_background_press(self, _w, event):
         """Click on empty desktop: clear the selection. Right-click: New folder,
-        New text document, Settings, like Windows."""
-        self.select(None)
+        New text document, Settings, like Windows. Drag: select icons with a box."""
+        ctrl = event.state & Gdk.ModifierType.CONTROL_MASK
+        if not ctrl:
+            self.select(None)
+        if event.button == 1:
+            self.band = (event.x, event.y, None, None)
+            self.band_base = list(self.selection)  # Ctrl+drag adds to what's selected
+            return True
         if event.button != 3:
             return False
         menu = Gtk.Menu()

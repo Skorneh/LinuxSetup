@@ -159,7 +159,10 @@ you can check it works. Games will be slow without a real graphics card.
 The Recycle Bin, plus everything in your `~/Desktop` folder. Drag icons
 anywhere (they snap to a grid and stay put), double-click to open, right-click
 for options (Open, Rename, Delete…). Right-click the empty desktop for New
-folder, New text document and Settings. Add app shortcuts from a taskbar button's right-click menu.
+folder, New text document and Settings. Drag a box on the empty desktop to
+select several icons (Ctrl+click adds or removes one), then drag them
+together, or onto the Recycle Bin to delete them. Dragging the Recycle Bin
+itself just moves it. Add app shortcuts from a taskbar button's right-click menu.
 
 ### Apps
 
