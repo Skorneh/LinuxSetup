@@ -1375,48 +1375,51 @@ class Bar(Gtk.Window):
             empty.set_xalign(0)
             fly.box.pack_start(empty, False, False, 4)
             return
-        items = Gtk.ListBox()
+        items = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         items.get_style_context().add_class("clipboard")
-        for line in entries:
-            items.add(self.clip_row(line))
-        items.connect("row-activated", lambda _l, row: self.paste_clip(row.line))
-        items.connect("key-press-event", lambda l, e: e.keyval == Gdk.KEY_Delete and l.get_selected_row()
-                      and (self.delete_clip(l.get_selected_row().line), True)[1])
+        rows = [self.clip_row(line) for line in entries]
+        for row in rows:
+            items.pack_start(row, False, False, 0)
         scroller = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
-        scroller.set_max_content_height(460)
-        scroller.set_propagate_natural_height(True)
+        # Tall enough for several items; scroll for the rest.
+        scroller.set_min_content_height(min(460, sum(r.height for r in rows)))
         scroller.add(items)
         fly.box.pack_start(scroller, False, False, 0)
-        first = items.get_row_at_index(0)
-        items.select_row(first)
-        GLib.idle_add(first.grab_focus)
+        GLib.idle_add(rows[0].paste.grab_focus)
 
     def clip_row(self, line):
-        row = Gtk.ListBoxRow()
-        row.line = line
-        box = Gtk.Box(spacing=8)
+        """One item: click it (or Enter) to paste, ✕ (or Delete) to remove it."""
+        row = Gtk.Box(spacing=0)
+        row.get_style_context().add_class("clip-row")
         _id, _, preview = line.partition("\t")
-        picture = None
-        if preview.startswith("[[ binary data"):
-            picture = self.clip_picture(line)
+        paste = Gtk.Button()
+        paste.set_relief(Gtk.ReliefStyle.NONE)
+        paste.get_style_context().add_class("clip-item")
+        picture = self.clip_picture(line) if preview.startswith("[[ binary data") else None
         if picture:
-            image = Gtk.Image.new_from_pixbuf(picture)
-            image.set_halign(Gtk.Align.START)
-            box.pack_start(image, True, True, 0)
+            content = Gtk.Image.new_from_pixbuf(picture)
+            content.set_halign(Gtk.Align.START)
+            row.height = picture.get_height() + 24
         else:
-            text = Gtk.Label(label=preview.strip(), xalign=0)
-            text.set_line_wrap(True)
-            text.set_lines(3)
-            text.set_ellipsize(Pango.EllipsizeMode.END)
-            text.set_max_width_chars(40)
-            box.pack_start(text, True, True, 0)
+            content = Gtk.Label(label=preview.strip(), xalign=0)
+            content.set_line_wrap(True)
+            content.set_lines(3)
+            content.set_ellipsize(Pango.EllipsizeMode.END)
+            content.set_max_width_chars(40)
+            row.height = 24 + 18 * min(3, 1 + len(preview) // 40)
+        paste.add(content)
+        paste.connect("clicked", lambda _b: self.paste_clip(line))
+        paste.connect("key-press-event", lambda _b, e: e.keyval == Gdk.KEY_Delete
+                      and (self.delete_clip(line), True)[1])
         remove = Gtk.Button(label="✕")
         remove.set_relief(Gtk.ReliefStyle.NONE)
         remove.set_valign(Gtk.Align.START)
+        remove.set_can_focus(False)
         remove.set_tooltip_text("Remove")
         remove.connect("clicked", lambda _b: self.delete_clip(line))
-        box.pack_end(remove, False, False, 0)
-        row.add(box)
+        row.pack_start(paste, True, True, 0)
+        row.pack_end(remove, False, False, 0)
+        row.paste = paste
         return row
 
     @staticmethod
@@ -1682,7 +1685,7 @@ class Desktop(Gtk.Window):
         # Clicking empty desktop clears the selection.
         background = Gtk.EventBox()
         background.set_visible_window(False)
-        background.connect("button-press-event", lambda *_: self.select(None))
+        background.connect("button-press-event", self.on_background_press)
         self.fixed = Gtk.Fixed()
         background.add(self.fixed)
         self.add(background)
@@ -1818,6 +1821,78 @@ class Desktop(Gtk.Window):
         self.layout()
         return False
 
+    def on_background_press(self, _w, event):
+        """Click on empty desktop: clear the selection. Right-click: New folder,
+        New text document, Settings, like Windows."""
+        self.select(None)
+        if event.button != 3:
+            return False
+        menu = Gtk.Menu()
+        for text, callback in (("New folder", lambda: self.new_item(event, folder=True)),
+                               ("New text document", lambda: self.new_item(event, folder=False)),
+                               (None, None),
+                               ("Settings", lambda: spawn("skornex-settings"))):
+            if text is None:
+                menu.append(Gtk.SeparatorMenuItem())
+                continue
+            item = Gtk.MenuItem(label=text)
+            item.connect("activate", lambda _i, c=callback: after_menu(c))
+            menu.append(item)
+        menu.show_all()
+        menu.attach_to_widget(self, None)
+        menu.popup_at_pointer(event)
+        return True
+
+    def new_item(self, event, folder):
+        """Makes "New folder" / "New text document.txt" where you right-clicked,
+        then asks for its name."""
+        base, ext = ("New folder", "") if folder else ("New text document", ".txt")
+        name, n = base + ext, 2
+        while os.path.exists(os.path.join(DESKTOP_DIR, name)):
+            name, n = f"{base} ({n}){ext}", n + 1
+        path = os.path.join(DESKTOP_DIR, name)
+        try:
+            if folder:
+                os.mkdir(path)
+            else:
+                open(path, "x").close()
+        except OSError:
+            return
+        if self.screen_size:
+            cols, rows = self.grid_size()
+            cell = (min(cols - 1, max(0, int((event.x - GRID_MARGIN) // CELL_W))),
+                    min(rows - 1, max(0, int((event.y - GRID_MARGIN) // CELL_H))))
+            if cell not in self.positions.values():
+                self.positions[name] = cell
+        self.refresh()
+        self.rename(path)
+
+    def rename(self, path):
+        old = os.path.basename(path)
+        dialog = Gtk.Dialog(title="Rename", modal=True)
+        dialog.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Rename", Gtk.ResponseType.OK)
+        dialog.set_default_response(Gtk.ResponseType.OK)
+        entry = Gtk.Entry(text=old, activates_default=True, width_chars=36)
+        box = dialog.get_content_area()
+        box.set_border_width(12)
+        box.pack_start(entry, False, False, 0)
+        dialog.show_all()
+        # Select the name without the extension, like Windows.
+        stem = os.path.splitext(old)[0] if os.path.isfile(path) else old
+        GLib.idle_add(entry.select_region, 0, len(stem))
+        if dialog.run() == Gtk.ResponseType.OK:
+            new = entry.get_text().strip().replace("/", "-")
+            target = os.path.join(DESKTOP_DIR, new)
+            if new and new != old and not os.path.exists(target):
+                try:
+                    os.rename(path, target)
+                    if old in self.positions:
+                        self.positions[new] = self.positions.pop(old)
+                        self.save_positions()
+                except OSError:
+                    pass
+        dialog.destroy()
+
     def make_icon(self, key, path):
         gfile = Gio.File.new_for_path(path)
         if path.endswith(".desktop"):
@@ -1834,6 +1909,7 @@ class Desktop(Gtk.Window):
         return DesktopIcon(self, key, os.path.basename(path), icon, lambda: spawn("xdg-open", path),
                            [("Open", lambda: spawn("xdg-open", path)),
                             ("Show in Files", lambda: spawn("nemo", DESKTOP_DIR)),
+                            ("Rename", lambda: self.rename(path)),
                             ("Delete", lambda: self.remove_file(gfile))])
 
     @staticmethod
