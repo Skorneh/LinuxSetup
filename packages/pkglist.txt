@@ -20,6 +20,7 @@ pciutils
 fd
 nano
 xdg-utils
+xdg-user-dirs
 gettext
 
 # --- Login ---

@@ -164,6 +164,12 @@ EOF
 # their normal behavior; an earlier SkorneX version sent them to Notepad too.
 xdg-mime default org.xfce.mousepad.desktop text/plain text/markdown text/x-markdown \
     application/json text/x-log
+# Folders open in Files (kitty's "open folder in terminal" entry claims them
+# otherwise).
+xdg-mime default nemo.desktop inode/directory
+# The usual folders in your home folder: Desktop, Documents, Downloads, Music,
+# Pictures, Videos... (Files shows them in its sidebar).
+xdg-user-dirs-update
 sed -i '/^\(application\|text\)\/x-shellscript=org.xfce.mousepad.desktop/d' "$HOME/.config/mimeapps.list" 2>/dev/null || true
 
 # --- 7. Firefox debloat ---

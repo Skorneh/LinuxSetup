@@ -143,6 +143,29 @@ def nmcli_fields(line):
     return [f.replace("\\:", ":").replace("\\\\", "\\") for f in re.split(r"(?<!\\):", line)]
 
 
+def find_path(path):
+    """An absolute path as typed, or with different capitals if that's the
+    only way it exists (~/downloads finds ~/Downloads). None if neither."""
+    if not path.startswith("/"):
+        return None
+    if os.path.exists(path):
+        return path
+    found = "/"
+    for part in [p for p in path.split("/") if p]:
+        exact = os.path.join(found, part)
+        if os.path.exists(exact):
+            found = exact
+            continue
+        try:
+            match = next((n for n in os.listdir(found) if n.casefold() == part.casefold()), None)
+        except OSError:
+            return None
+        if match is None:
+            return None
+        found = os.path.join(found, match)
+    return found
+
+
 def spawn(*cmd):
     """Start a program on its own, without waiting for it."""
     try:
@@ -1497,9 +1520,10 @@ class Bar(Gtk.Window):
         """Win+R, like Windows: an app's name ("settings", "task manager"), a
         program or command ("firefox --private-window"), a folder or file
         ("~/Downloads"), or a website ("archlinux.org"). False if nothing fits."""
-        path = os.path.expanduser(text)
-        if path.startswith("/") and os.path.exists(path):
-            spawn("xdg-open", path)
+        path = find_path(os.path.expanduser(text))
+        if path:
+            # Folders in Files; files in whatever opens them.
+            spawn(*(["nemo", path] if os.path.isdir(path) else ["xdg-open", path]))
             return True
         if re.match(r"^(https?://|www\.)|^[\w-]+(\.[\w-]+)+(/\S*)?$", text) and " " not in text:
             spawn("xdg-open", text if "://" in text else "https://" + text)
