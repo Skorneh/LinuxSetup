@@ -1535,6 +1535,11 @@ class Bar(Gtk.Window):
         if shutil.which(os.path.expanduser(program)):
             spawn("sh", "-c", text)
             return True
+        # A folder or file in your home folder, without typing ~/ ("downloads").
+        path = find_path(os.path.join(HOME, os.path.expanduser(text)))
+        if path and path != HOME:
+            spawn(*(["nemo", path] if os.path.isdir(path) else ["xdg-open", path]))
+            return True
         # An app by its name: exact first, then the start of a name or word.
         wanted = text.casefold()
         apps = self.apps.visible()
