@@ -1,0 +1,153 @@
+#!/usr/bin/env python3
+"""SkorneX Snipping Tool: take a screenshot from a window, like Windows'
+Snipping Tool.
+
+    skornex-snip     open it (or search "Snipping Tool")
+
+Pick Rectangle (drag a box) or Full screen, and a delay if you need time to
+open a menu first, then press New. The screenshot is copied to the clipboard
+and shown in the window, with Save, Copy and Edit in Paint.
+"""
+
+import os
+import subprocess
+import sys
+import tempfile
+import time
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("GdkPixbuf", "2.0")
+from gi.repository import GdkPixbuf, Gio, GLib, Gtk  # noqa: E402
+
+APP_ID = "dev.skornex.Snip"
+DELAYS = [(0, "No delay"), (3, "3 seconds"), (5, "5 seconds"), (10, "10 seconds")]
+
+
+class SnipWindow(Gtk.ApplicationWindow):
+    def __init__(self, app):
+        super().__init__(application=app, title="Snipping Tool")
+        self.set_default_size(520, 140)
+        self.set_icon_name("skornex-snip")
+        self.shot = None  # path of the last screenshot
+
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        root.set_border_width(12)
+        self.add(root)
+        bar = Gtk.Box(spacing=8)
+        new = Gtk.Button(label="New")
+        new.get_style_context().add_class("suggested-action")
+        new.connect("clicked", lambda _b: self.capture())
+        self.mode = Gtk.ComboBoxText()
+        self.mode.append("region", "Rectangle")
+        self.mode.append("full", "Full screen")
+        self.mode.set_active_id("region")
+        self.delay = Gtk.ComboBoxText()
+        for seconds, text in DELAYS:
+            self.delay.append(str(seconds), text)
+        self.delay.set_active_id("0")
+        bar.pack_start(new, False, False, 0)
+        bar.pack_start(self.mode, False, False, 0)
+        bar.pack_start(self.delay, False, False, 0)
+        self.actions = Gtk.Box(spacing=8)
+        for text, cb in (("Edit in Paint", self.edit), ("Copy", self.copy), ("Save", self.save)):
+            button = Gtk.Button(label=text)
+            button.connect("clicked", lambda _b, cb=cb: cb())
+            self.actions.pack_end(button, False, False, 0)
+        self.actions.set_no_show_all(True)
+        bar.pack_end(self.actions, False, False, 0)
+        root.pack_start(bar, False, False, 0)
+
+        self.preview = Gtk.Image()
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_no_show_all(True)
+        scroller.add(self.preview)
+        self.scroller = scroller
+        root.pack_start(scroller, True, True, 0)
+
+        for name, keys, cb in (("close", ["<Ctrl>w"], self.close), ("copy", ["<Ctrl>c"], self.copy),
+                               ("save", ["<Ctrl>s"], self.save), ("new", ["<Ctrl>n"], self.capture)):
+            action = Gio.SimpleAction.new(name, None)
+            action.connect("activate", lambda *_a, cb=cb: cb())
+            self.add_action(action)
+            app.set_accels_for_action("win." + name, keys)
+
+    def capture(self):
+        # Out of the way first, so the window isn't in the picture.
+        self.hide()
+        wait = int(self.delay.get_active_id() or 0) * 1000 + 300
+        GLib.timeout_add(wait, self.take)
+
+    def take(self):
+        path = os.path.join(tempfile.gettempdir(), f"skornex-snip-{os.getpid()}.png")
+        cmd = ["grim", path]
+        if self.mode.get_active_id() == "region":
+            area = subprocess.run(["slurp"], capture_output=True, text=True).stdout.strip()
+            if not area:  # Esc: no screenshot
+                self.show()
+                return False
+            cmd = ["grim", "-g", area, path]
+        ok = subprocess.run(cmd).returncode == 0
+        self.show()
+        if ok:
+            self.shot = path
+            self.copy()
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file(path)
+            scale = min(1.0, 900 / pixbuf.get_width(), 560 / pixbuf.get_height())
+            self.preview.set_from_pixbuf(pixbuf.scale_simple(
+                max(1, int(pixbuf.get_width() * scale)), max(1, int(pixbuf.get_height() * scale)),
+                GdkPixbuf.InterpType.BILINEAR))
+            # (show_all skips widgets marked no-show-all, so show them directly)
+            for widget in [self.scroller, self.preview, self.actions] + self.actions.get_children():
+                widget.show()
+            self.resize(max(520, int(pixbuf.get_width() * scale) + 40),
+                        int(pixbuf.get_height() * scale) + 90)
+        self.present()
+        return False
+
+    def copy(self):
+        if self.shot:
+            with open(self.shot, "rb") as f:
+                subprocess.run(["wl-copy", "--type", "image/png"], stdin=f)
+
+    def save(self):
+        if not self.shot:
+            return
+        dialog = Gtk.FileChooserDialog(title="Save screenshot", transient_for=self,
+                                       action=Gtk.FileChooserAction.SAVE)
+        dialog.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Save", Gtk.ResponseType.ACCEPT)
+        dialog.set_do_overwrite_confirmation(True)
+        folder = os.path.join(GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_PICTURES)
+                              or os.path.expanduser("~"), "Screenshots")
+        os.makedirs(folder, exist_ok=True)
+        dialog.set_current_folder(folder)
+        dialog.set_current_name(time.strftime("Screenshot %Y-%m-%d %H-%M-%S.png"))
+        if dialog.run() == Gtk.ResponseType.ACCEPT:
+            target = dialog.get_filename()
+            if not target.lower().endswith(".png"):
+                target += ".png"
+            with open(self.shot, "rb") as src, open(target, "wb") as dst:
+                dst.write(src.read())
+        dialog.destroy()
+
+    def edit(self):
+        if self.shot:
+            subprocess.Popen(["skornex-paint", self.shot], start_new_session=True)
+
+
+class App(Gtk.Application):
+    def __init__(self):
+        super().__init__(application_id=APP_ID)
+
+    def do_activate(self):
+        Gtk.Settings.get_default().props.gtk_application_prefer_dark_theme = True
+        window = self.get_windows()[0] if self.get_windows() else SnipWindow(self)
+        window.show_all()
+        window.present()
+
+
+if __name__ == "__main__":
+    # The window's app ID, which labwc and the taskbar use to find the icon.
+    GLib.set_prgname(APP_ID)
+    sys.exit(App().run(sys.argv))

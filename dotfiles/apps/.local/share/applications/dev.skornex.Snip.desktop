@@ -1,0 +1,11 @@
+[Desktop Entry]
+# SkorneX Snipping Tool (skornex-snip). Named after the window's app ID so
+# the taskbar and title bar find its icon.
+Type=Application
+Name=Snipping Tool
+Comment=Take a screenshot of part of the screen or all of it
+Exec=skornex-snip
+Icon=skornex-snip
+StartupWMClass=dev.skornex.Snip
+Categories=Utility;Graphics;
+Keywords=screenshot;snip;snipping;capture;print screen;screen;

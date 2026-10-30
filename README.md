@@ -168,6 +168,7 @@ folder, New text document and Settings. Add app shortcuts from a taskbar button'
 | **Files** (Win+E) | Nemo file manager. |
 | **Terminal** (Ctrl+Alt+T) | kitty. `nano` is there for quick edits. |
 | **Notepad** | Mousepad: tabs, line numbers, syntax colors. Opens text files you double-click. |
+| **Snipping Tool** | Screenshots from a window: Rectangle or Full screen, an optional delay, then Save, Copy or Edit in Paint. Print Screen still works too. |
 | **Paint** | SkorneX Paint, laid out like Microsoft Paint. Take a screenshot, open Paint, press Ctrl+V, mark it up, Ctrl+S. |
 | **Task Manager** (Ctrl+Shift+Esc) | Apps and background processes with CPU and memory. Select one and press End task. |
 | **Firefox** | With Pocket, sponsored content, telemetry and the AI sidebar turned off. Check `about:policies` to see the settings. |

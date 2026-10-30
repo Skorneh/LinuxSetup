@@ -14,6 +14,9 @@
   <theme>
     <cornerRadius>6</cornerRadius>
     <icon>Papirus-Dark</icon>
+    <!-- Windows that have no icon of their own get a plain app icon instead
+         of labwc's logo. -->
+    <fallbackAppIcon>application-x-executable</fallbackAppIcon>
     <font name="Maple Mono NF" size="10" />
   </theme>
 
