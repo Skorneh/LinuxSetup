@@ -3,26 +3,62 @@
 # the Power settings module restarts it after a change.
 #
 # Times are in ~/.config/skornex/power (seconds, 0 = never):
-#   LOCK=600          lock the screen
-#   SCREEN_OFF=900    turn the screen off (it comes back when you move the mouse)
-#   SLEEP=0           go to sleep
+#   LOCK=600 SCREEN_OFF=900 SLEEP=0              plugged in (and desktop PCs)
+#   BATTERY_LOCK=300 BATTERY_SCREEN_OFF=300 BATTERY_SLEEP=900   on battery
 #   LOCK_ON_SLEEP=1   lock the screen when the PC goes to sleep
+# On a laptop it switches between the two sets when you plug in or unplug.
 # Videos and games that ask the screen to stay on are respected.
-LOCK=600
-SCREEN_OFF=900
-SLEEP=0
-LOCK_ON_SLEEP=1
 conf="${XDG_CONFIG_HOME:-$HOME/.config}/skornex/power"
-# shellcheck source=/dev/null
-[ -f "$conf" ] && . "$conf"
 
-set -- -w
-[ "$LOCK" -gt 0 ] 2>/dev/null && set -- "$@" timeout "$LOCK" 'pidof hyprlock || hyprlock &'
-[ "$SCREEN_OFF" -gt 0 ] 2>/dev/null && set -- "$@" timeout "$SCREEN_OFF" 'wlopm --off \*' resume 'wlopm --on \*'
-[ "$SLEEP" -gt 0 ] 2>/dev/null && set -- "$@" timeout "$SLEEP" 'systemctl suspend'
-[ "$LOCK_ON_SLEEP" = 1 ] && set -- "$@" before-sleep 'pidof hyprlock || hyprlock &'
-# Lock when asked to (closing the lid can be set to lock, in Power settings).
-set -- "$@" lock 'pidof hyprlock || hyprlock &'
+on_battery() {
+    # A laptop running on battery: a mains adapter exists and isn't online.
+    found=
+    for supply in /sys/class/power_supply/*; do
+        [ "$(cat "$supply/type" 2>/dev/null)" = Mains ] || continue
+        [ "$(cat "$supply/online" 2>/dev/null)" = 1 ] && return 1
+        found=1
+    done
+    [ -n "${found:-}" ]
+}
 
-pkill -u "$(id -u)" -x swayidle 2>/dev/null
-exec swayidle "$@"
+start() {
+    LOCK=600 SCREEN_OFF=900 SLEEP=0
+    BATTERY_LOCK=300 BATTERY_SCREEN_OFF=300 BATTERY_SLEEP=900
+    LOCK_ON_SLEEP=1
+    # shellcheck source=/dev/null
+    [ -f "$conf" ] && . "$conf"
+    if on_battery; then
+        LOCK=$BATTERY_LOCK SCREEN_OFF=$BATTERY_SCREEN_OFF SLEEP=$BATTERY_SLEEP
+    fi
+    set -- -w
+    [ "$LOCK" -gt 0 ] 2>/dev/null && set -- "$@" timeout "$LOCK" 'pidof hyprlock || hyprlock &'
+    [ "$SCREEN_OFF" -gt 0 ] 2>/dev/null && set -- "$@" timeout "$SCREEN_OFF" 'wlopm --off \*' resume 'wlopm --on \*'
+    [ "$SLEEP" -gt 0 ] 2>/dev/null && set -- "$@" timeout "$SLEEP" 'systemctl suspend'
+    [ "$LOCK_ON_SLEEP" = 1 ] && set -- "$@" before-sleep 'pidof hyprlock || hyprlock &'
+    # Lock when asked to (closing the lid can be set to lock, in Power settings).
+    set -- "$@" lock 'pidof hyprlock || hyprlock &'
+    swayidle "$@" &
+    idle=$!
+}
+
+# Only one of us: a new one (after a settings change) replaces the old one.
+pidfile="${XDG_RUNTIME_DIR:-/tmp}/skornex-idle.pid"
+if [ -f "$pidfile" ]; then
+    old=$(cat "$pidfile")
+    kill "$old" 2>/dev/null
+    pkill -P "$old" 2>/dev/null  # its swayidle, and its wait, so it stops now
+fi
+echo $$ > "$pidfile"
+trap 'kill "$idle" 2>/dev/null; exit 0' TERM INT
+
+start
+state=$(on_battery && echo battery || echo plugged)
+while sleep 10; do
+    now=$(on_battery && echo battery || echo plugged)
+    if [ "$now" != "$state" ] || ! kill -0 "$idle" 2>/dev/null; then
+        kill "$idle" 2>/dev/null
+        wait "$idle" 2>/dev/null
+        state=$now
+        start
+    fi
+done

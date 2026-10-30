@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """SkorneX Power settings: when the screen locks, turns off and the PC goes
 to sleep, and what the power button and closing the lid do, like Windows'
-Power & sleep settings.
+Power & sleep settings. On a laptop, each has a "Plugged in" and an "On
+battery" choice.
 
     skornex-power     open it on its own (or search "Power settings")
 
@@ -27,7 +28,8 @@ APP_ID = "dev.skornex.Power"
 CONF = os.path.expanduser("~/.config/skornex/power")
 LOGIND = "/etc/systemd/logind.conf.d/90-skornex.conf"
 POWER_KEY_XML = os.path.expanduser("~/.config/skornex/labwc/power.xml")
-DEFAULTS = {"LOCK": "600", "SCREEN_OFF": "900", "SLEEP": "0", "LOCK_ON_SLEEP": "1"}
+DEFAULTS = {"LOCK": "600", "SCREEN_OFF": "900", "SLEEP": "0", "LOCK_ON_SLEEP": "1",
+            "BATTERY_LOCK": "300", "BATTERY_SCREEN_OFF": "300", "BATTERY_SLEEP": "900"}
 
 MINUTES = [(60, "1 minute"), (120, "2 minutes"), (180, "3 minutes"), (300, "5 minutes"),
            (600, "10 minutes"), (900, "15 minutes"), (1200, "20 minutes"), (1800, "30 minutes"),
@@ -54,7 +56,7 @@ def write_conf(values):
     os.makedirs(os.path.dirname(CONF), exist_ok=True)
     with open(CONF, "w") as f:
         f.write("# Made by Power settings (skornex-power). Seconds; 0 = never.\n")
-        for key in ("LOCK", "SCREEN_OFF", "SLEEP", "LOCK_ON_SLEEP"):
+        for key in DEFAULTS:
             f.write(f"{key}={values[key]}\n")
     # skornex-idle reads it when it starts; it stops the old one itself.
     subprocess.Popen([os.path.expanduser("~/.local/bin/skornex-idle")], start_new_session=True,
@@ -62,8 +64,9 @@ def write_conf(values):
 
 
 def read_logind():
-    """(power button, lid) as set now; systemd's defaults if SkorneX never set them."""
-    button, lid = "poweroff", "suspend"
+    """(power button, lid on battery, lid plugged in) as set now; systemd's
+    defaults if SkorneX never set them."""
+    button, lid, lid_plugged = "poweroff", "suspend", "suspend"
     try:
         with open(LOGIND) as f:
             for line in f:
@@ -71,11 +74,13 @@ def read_logind():
                     button = line.strip().split("=", 1)[1]
                 elif line.startswith("HandleLidSwitch="):
                     lid = line.strip().split("=", 1)[1]
+                elif line.startswith("HandleLidSwitchExternalPower="):
+                    lid_plugged = line.strip().split("=", 1)[1]
     except OSError:
         pass
     if button == "ignore" and os.path.exists(POWER_KEY_XML):
         button = "menu"  # logind ignores the key and SkorneX shows the menu instead
-    return button, lid
+    return button, lid, lid_plugged
 
 
 def has_battery():
@@ -91,12 +96,12 @@ def has_battery():
     return False
 
 
-def write_logind(button, lid):
+def write_logind(button, lid, lid_plugged):
     """Asks for your password (polkit) and sets the power button and lid."""
     key = "ignore" if button == "menu" else button
     text = ("# Made by Power settings (skornex-power).\n[Login]\n"
             f"HandlePowerKey={key}\nHandlePowerKeyLongPress=poweroff\n"
-            f"HandleLidSwitch={lid}\nHandleLidSwitchExternalPower={lid}\n")
+            f"HandleLidSwitch={lid}\nHandleLidSwitchExternalPower={lid_plugged}\n")
     script = (f"mkdir -p /etc/systemd/logind.conf.d && cat > {LOGIND} && "
               "systemctl kill -s HUP systemd-logind")
     done = subprocess.run(["pkexec", "sh", "-c", script], input=text, text=True).returncode == 0
@@ -120,28 +125,35 @@ class Page(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         self.set_border_width(24)
         self.values = read_conf()
-        self.button, self.lid = read_logind()
+        self.buttons = read_logind()  # (power button, lid on battery, lid plugged in)
+        self.laptop = has_battery()
         self.loading = True
         title = Gtk.Label(xalign=0)
         title.set_markup(f"<span size='x-large' weight='bold'>{TITLE}</span>")
         self.pack_start(title, False, False, 0)
 
-        self.grid = Gtk.Grid(row_spacing=10, column_spacing=24)
+        # On a laptop, two columns like Windows: plugged in, and on battery.
+        self.grid = Gtk.Grid(row_spacing=10, column_spacing=16)
         self.pack_start(self.grid, False, False, 0)
         self.row = 0
         self.heading("When I'm away")
-        self.time_combo("Lock the screen after", "LOCK")
-        self.time_combo("Turn off the screen after", "SCREEN_OFF")
-        self.time_combo("Go to sleep after", "SLEEP")
+        if self.laptop:
+            self.columns("Plugged in", "On battery")
+        self.times("Lock the screen after", "LOCK")
+        self.times("Turn off the screen after", "SCREEN_OFF")
+        self.times("Go to sleep after", "SLEEP")
         lock = Gtk.Switch(active=self.values["LOCK_ON_SLEEP"] == "1", halign=Gtk.Align.START)
         lock.connect("notify::active", lambda s, _p: self.set_value("LOCK_ON_SLEEP", "1" if s.get_active() else "0"))
-        self.add("Lock when the PC goes to sleep", lock)
+        self.add("Lock when the PC goes to sleep", [lock])
 
         self.heading("Buttons")
-        self.button_combo = self.choice("When I press the power button", POWER_BUTTON, self.button)
-        self.lid_combo = None
-        if has_battery():
-            self.lid_combo = self.choice("When I close the lid", LID, self.lid)
+        self.button_combo = self.combo(POWER_BUTTON, self.buttons[0])
+        self.add("When I press the power button", [self.button_combo])
+        self.lid_combos = None
+        if self.laptop:
+            self.columns("Plugged in", "On battery")
+            self.lid_combos = (self.combo(LID, self.buttons[2]), self.combo(LID, self.buttons[1]))
+            self.add("When I close the lid", list(self.lid_combos))
         self.problem = Gtk.Label(xalign=0)
         self.problem.set_no_show_all(True)
         self.pack_start(self.problem, False, False, 0)
@@ -151,16 +163,24 @@ class Page(Gtk.Box):
         label = Gtk.Label(xalign=0)
         label.set_markup(f"<b>{text}</b>")
         label.set_margin_top(8)
-        self.grid.attach(label, 0, self.row, 2, 1)
+        self.grid.attach(label, 0, self.row, 3, 1)
         self.row += 1
 
-    def add(self, text, widget):
+    def columns(self, *names):
+        for col, name in enumerate(names, 1):
+            label = Gtk.Label(xalign=0)
+            label.set_markup(f"<span alpha='65%'>{name}</span>")
+            self.grid.attach(label, col, self.row, 1, 1)
+        self.row += 1
+
+    def add(self, text, widgets):
         self.grid.attach(Gtk.Label(label=text, xalign=0), 0, self.row, 1, 1)
-        widget.set_hexpand(True)
-        self.grid.attach(widget, 1, self.row, 1, 1)
+        for col, widget in enumerate(widgets, 1):
+            widget.set_hexpand(True)
+            self.grid.attach(widget, col, self.row, 1, 1)
         self.row += 1
 
-    def time_combo(self, text, key):
+    def time_combo(self, key):
         combo = Gtk.ComboBoxText()
         choices = list(MINUTES)
         if not any(str(s) == self.values[key] for s, _ in choices):
@@ -169,15 +189,20 @@ class Page(Gtk.Box):
             combo.append(str(seconds), name)
         combo.set_active_id(self.values[key])
         combo.connect("changed", lambda c: self.set_value(key, c.get_active_id()))
-        self.add(text, combo)
+        return combo
 
-    def choice(self, text, options, current):
+    def times(self, text, key):
+        combos = [self.time_combo(key)]
+        if self.laptop:
+            combos.append(self.time_combo("BATTERY_" + key))
+        self.add(text, combos)
+
+    def combo(self, options, current):
         combo = Gtk.ComboBoxText()
         for value, name in options:
             combo.append(value, name)
         combo.set_active_id(current)
-        combo.connect("changed", lambda _c: GLib.idle_add(self.set_buttons))
-        self.add(text, combo)
+        combo.connect("changed", lambda _c: not self.loading and GLib.idle_add(self.set_buttons))
         return combo
 
     def set_value(self, key, value):
@@ -188,17 +213,20 @@ class Page(Gtk.Box):
 
     def set_buttons(self):
         button = self.button_combo.get_active_id()
-        lid = self.lid_combo.get_active_id() if self.lid_combo else self.lid
-        if (button, lid) == (self.button, self.lid):
+        lid_plugged, lid = ((c.get_active_id() for c in self.lid_combos) if self.lid_combos
+                            else self.buttons[2:0:-1])
+        wanted = (button, lid, lid_plugged)
+        if wanted == self.buttons:
             return False
-        if write_logind(button, lid):
-            self.button, self.lid = button, lid
+        if write_logind(*wanted):
+            self.buttons = wanted
             self.problem.hide()
         else:  # cancelled: show what's really set
             self.loading = True
-            self.button_combo.set_active_id(self.button)
-            if self.lid_combo:
-                self.lid_combo.set_active_id(self.lid)
+            self.button_combo.set_active_id(self.buttons[0])
+            if self.lid_combos:
+                self.lid_combos[0].set_active_id(self.buttons[2])
+                self.lid_combos[1].set_active_id(self.buttons[1])
             self.loading = False
             self.problem.set_text("Not changed (that needs your password).")
             self.problem.show()
