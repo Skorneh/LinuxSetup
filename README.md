@@ -201,7 +201,7 @@ already made.
 | Keys | Action |
 |---|---|
 | Win, or Ctrl+Space | Search apps and files |
-| Win+R | Run a command |
+| Win+R | Run: an app by name ("settings"), a command, a folder ("~/Downloads") or a website |
 | Win+V | Clipboard history: the last things you copied (text and pictures). Click one to paste it |
 | Win+E | Files |
 | Ctrl+Alt+T | Terminal |

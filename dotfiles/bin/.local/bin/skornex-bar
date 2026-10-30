@@ -30,6 +30,8 @@ import glob
 import json
 import os
 import re
+import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -674,7 +676,7 @@ class VolumeOsd(Gtk.Window):
     def show_level(self, level, muted, right):
         self.icon.set_text(ICON_MUTED if muted else ICON_VOLUME[min(2, level // 34)])
         self.bar.set_fraction(0 if muted else level / 100)
-        self.percent.set_text("Muted" if muted else f"{level}%")
+        self.percent.set_text(f"{level}%")  # same width muted or not; the icon shows muted
         GtkLayerShell.set_margin(self, GtkLayerShell.Edge.RIGHT, max(8, right))
         self.show_all()
         if self.timer:
@@ -1361,7 +1363,9 @@ class Bar(Gtk.Window):
     # Clipboard history (Win+V), like Windows: the last things you copied
     # (cliphist keeps them). Click one, or pick it and press Enter, to paste it.
     def fill_clipboard(self, fly):
-        fly.set_size_request(400, -1)
+        # A fixed size, like search: a pop-up that grows with its content can
+        # end up with clicks landing in the wrong place.
+        fly.set_size_request(400, 480)
         active = self.screen.get_active_window()
         self.paste_into = list(active.get_class_ids() or []) if active else []
         head = Gtk.Box()
@@ -1380,11 +1384,11 @@ class Bar(Gtk.Window):
         rows = [self.clip_row(line) for line in entries]
         for row in rows:
             items.pack_start(row, False, False, 0)
-        scroller = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
-        # Tall enough for several items; scroll for the rest.
-        scroller.set_min_content_height(min(460, sum(r.height for r in rows)))
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroller.set_vexpand(True)
         scroller.add(items)
-        fly.box.pack_start(scroller, False, False, 0)
+        fly.box.pack_start(scroller, True, True, 0)
         GLib.idle_add(rows[0].paste.grab_focus)
 
     def clip_row(self, line):
@@ -1399,14 +1403,12 @@ class Bar(Gtk.Window):
         if picture:
             content = Gtk.Image.new_from_pixbuf(picture)
             content.set_halign(Gtk.Align.START)
-            row.height = picture.get_height() + 24
         else:
             content = Gtk.Label(label=preview.strip(), xalign=0)
             content.set_line_wrap(True)
             content.set_lines(3)
             content.set_ellipsize(Pango.EllipsizeMode.END)
             content.set_max_width_chars(40)
-            row.height = 24 + 18 * min(3, 1 + len(preview) // 40)
         paste.add(content)
         paste.connect("clicked", lambda _b: self.paste_clip(line))
         paste.connect("key-press-event", lambda _b, e: e.keyval == Gdk.KEY_Delete
@@ -1469,16 +1471,57 @@ class Bar(Gtk.Window):
 
     # Run (Win+R), like Windows: type a command, press Enter.
     def fill_run(self, fly):
-        fly.set_size_request(420, -1)
+        fly.set_size_request(420, 150)
         fly.box.pack_start(label("Run", "title"), False, False, 0)
-        hint = label("Type a program or command, like firefox or nemo ~/Downloads", "status")
+        hint = label("An app, a command, a folder, or a website", "status")
         hint.set_xalign(0)
         fly.box.pack_start(hint, False, False, 0)
         entry = Gtk.Entry()
-        entry.connect("activate", lambda e: e.get_text().strip()
-                      and (spawn("sh", "-c", e.get_text().strip()), self.close_flyout()))
         fly.box.pack_start(entry, False, False, 0)
+        problem = label("", "status")
+        problem.set_xalign(0)
+        fly.box.pack_start(problem, False, False, 0)
+
+        def go(e):
+            text = e.get_text().strip()
+            if not text:
+                return
+            if self.run_text(text):
+                self.close_flyout()
+            else:
+                problem.set_text(f"Can't find “{text}”. Check the name and try again.")
+        entry.connect("activate", go)
         GLib.idle_add(entry.grab_focus)
+
+    def run_text(self, text):
+        """Win+R, like Windows: an app's name ("settings", "task manager"), a
+        program or command ("firefox --private-window"), a folder or file
+        ("~/Downloads"), or a website ("archlinux.org"). False if nothing fits."""
+        path = os.path.expanduser(text)
+        if path.startswith("/") and os.path.exists(path):
+            spawn("xdg-open", path)
+            return True
+        if re.match(r"^(https?://|www\.)|^[\w-]+(\.[\w-]+)+(/\S*)?$", text) and " " not in text:
+            spawn("xdg-open", text if "://" in text else "https://" + text)
+            return True
+        try:
+            program = shlex.split(text)[0]
+        except ValueError:
+            program = text.split()[0]
+        if shutil.which(os.path.expanduser(program)):
+            spawn("sh", "-c", text)
+            return True
+        # An app by its name: exact first, then the start of a name or word.
+        wanted = text.casefold()
+        apps = self.apps.visible()
+        for test in (lambda name: name == wanted,
+                     lambda name: name.startswith(wanted),
+                     lambda name: any(word.startswith(wanted) for word in name.split())):
+            for app_id, info in apps:
+                if test(info.get_display_name().casefold()):
+                    self.apps.launch(app_id)
+                    return True
+        return False
 
 
 # --- SkorneXDesktop: desktop icons -----------------------------------------
